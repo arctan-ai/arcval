@@ -1,7 +1,7 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -29,6 +29,7 @@ def generate_leaderboard(output_dir: str, save_dir: str) -> None:
         return
 
     model_results: Dict[str, Dict[str, float]] = {}
+    model_normalized: Dict[str, Dict[str, float]] = {}
     metric_names: List[str] = []
 
     for model_dir in model_dirs:
@@ -37,10 +38,12 @@ def generate_leaderboard(output_dir: str, save_dir: str) -> None:
         if result is None:
             continue
 
-        model_results[model_name] = result
+        display, normalized = result
+        model_results[model_name] = display
+        model_normalized[model_name] = normalized
 
         # Collect all metric names
-        for metric_name in result.keys():
+        for metric_name in display.keys():
             if metric_name not in metric_names:
                 metric_names.append(metric_name)
 
@@ -48,7 +51,9 @@ def generate_leaderboard(output_dir: str, save_dir: str) -> None:
         print("No results found to compile.")
         return
 
-    leaderboard_df = _build_leaderboard(model_results, metric_names)
+    leaderboard_df = _build_leaderboard(
+        model_results, model_normalized, metric_names
+    )
     csv_path = save_path / "simulation_leaderboard.csv"
     leaderboard_df.to_csv(csv_path, index=False)
     print(f"Saved leaderboard CSV to {csv_path}")
@@ -57,7 +62,20 @@ def generate_leaderboard(output_dir: str, save_dir: str) -> None:
     _create_comparison_chart(leaderboard_df, chart_path)
 
 
-def _read_metrics(metrics_path: Path) -> Optional[Dict[str, float]]:
+def _read_metrics(
+    metrics_path: Path,
+) -> Optional[Tuple[Dict[str, float], Dict[str, float]]]:
+    """Read metrics.json and return (display, normalized) per-metric dicts.
+
+    - ``display``: raw value to show in the CSV and chart.
+      Binary metrics are 0-1 fractions → converted to % for chart readability.
+      Rating metrics are raw means on the criterion's own scale → kept as-is.
+    - ``normalized``: 0-100 value used to compute a unit-consistent ``overall``
+      column. Binary already in 0-100 after conversion; rating is rescaled
+      to percentage of the criterion's scale via
+      ``(mean - scale_min) / (scale_max - scale_min) * 100``. Legacy flat
+      values are treated as binary.
+    """
     if not metrics_path.exists():
         print(f"[WARN] metrics.json missing for {metrics_path.parent}")
         return None
@@ -69,35 +87,64 @@ def _read_metrics(metrics_path: Path) -> Optional[Dict[str, float]]:
         print(f"[WARN] Could not parse {metrics_path}")
         return None
 
-    # Extract mean values for each metric.
-    # Binary metrics are 0-1 fractions → convert to % for chart readability.
-    # Rating metrics are raw scores on the criterion's own scale → keep as-is.
-    result: Dict[str, float] = {}
+    display: Dict[str, float] = {}
+    normalized: Dict[str, float] = {}
+
     for metric_name, metric_data in data.items():
         if isinstance(metric_data, dict) and "mean" in metric_data:
             is_rating_metric = metric_data.get("type") == "rating"
             mean = float(metric_data["mean"])
-            result[metric_name] = mean if is_rating_metric else mean * 100
+            if is_rating_metric:
+                display[metric_name] = mean
+                scale_min = float(metric_data.get("scale_min", 0))
+                scale_max = float(metric_data.get("scale_max", 1))
+                scale_range = scale_max - scale_min
+                if scale_range > 0:
+                    normalized[metric_name] = (
+                        (mean - scale_min) / scale_range * 100
+                    )
+                else:
+                    normalized[metric_name] = 0.0
+            else:
+                display[metric_name] = mean * 100
+                normalized[metric_name] = mean * 100
         elif isinstance(metric_data, (int, float)):
-            # Legacy flat value — assume binary pass-rate
-            result[metric_name] = float(metric_data) * 100
+            # Legacy flat value — assume binary pass-rate in [0,1]
+            display[metric_name] = float(metric_data) * 100
+            normalized[metric_name] = float(metric_data) * 100
 
-    return result
+    return display, normalized
 
 
 def _build_leaderboard(
     model_results: Dict[str, Dict[str, float]],
+    model_normalized: Dict[str, Dict[str, float]],
     metric_names: List[str],
 ) -> pd.DataFrame:
+    """Build the leaderboard DataFrame.
+
+    Per-metric columns show the raw ``display`` value (binary → %, rating →
+    raw mean on the criterion's scale). The ``overall`` column is computed
+    from the ``normalized`` (0-100) values so it stays unit-consistent even
+    when the config mixes binary and rating criteria on different scales.
+    """
     rows = []
     for model_name in sorted(model_results):
         row: Dict[str, Optional[float]] = {"model": model_name}
         for metric in metric_names:
             row[metric] = model_results[model_name].get(metric)
 
-        # Calculate overall average across all metrics
-        values = [v for v in row.values() if isinstance(v, (int, float))]
-        row["overall"] = sum(values) / len(values) if values else None
+        # Overall = mean of normalized (0-100) values — unit-consistent
+        normalized_values = [
+            v
+            for v in model_normalized.get(model_name, {}).values()
+            if isinstance(v, (int, float))
+        ]
+        row["overall"] = (
+            sum(normalized_values) / len(normalized_values)
+            if normalized_values
+            else None
+        )
         rows.append(row)
 
     return pd.DataFrame(rows)

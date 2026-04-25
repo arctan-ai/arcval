@@ -154,5 +154,122 @@ class TestAgentSimulationRunSingleSTTFallback(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("stt_judge_model", kwargs)
 
 
+# ---------------------------------------------------------------------------
+# Bug 3: simulation_leaderboard `overall` must be unit-consistent across
+# mixed binary/rating criteria
+# ---------------------------------------------------------------------------
+
+
+class TestSimulationLeaderboardOverallUnitConsistent(unittest.TestCase):
+
+    def test_overall_uses_normalized_values_for_rating(self):
+        """Binary % and rating raw means can't be averaged directly.
+        The overall column should be computed from normalized (0-100) values:
+        for rating, (mean - scale_min) / (scale_max - scale_min) * 100.
+        """
+        import pathlib
+        from calibrate.llm.simulation_leaderboard import generate_leaderboard
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            # Model A: binary 80%, rating mean 4/5 → normalized 75%.
+            # Expected overall (normalized mean) = (80 + 75) / 2 = 77.5
+            (base / "model-a").mkdir()
+            (base / "model-a" / "metrics.json").write_text(
+                json.dumps({
+                    "accuracy": {"type": "binary", "mean": 0.8},
+                    "fluency": {
+                        "type": "rating",
+                        "mean": 4.0,
+                        "scale_min": 1,
+                        "scale_max": 5,
+                    },
+                })
+            )
+            # Model B: binary 100%, rating mean 1/5 → normalized 0%.
+            # Expected overall = (100 + 0) / 2 = 50
+            (base / "model-b").mkdir()
+            (base / "model-b" / "metrics.json").write_text(
+                json.dumps({
+                    "accuracy": {"type": "binary", "mean": 1.0},
+                    "fluency": {
+                        "type": "rating",
+                        "mean": 1.0,
+                        "scale_min": 1,
+                        "scale_max": 5,
+                    },
+                })
+            )
+
+            save_dir = base / "leaderboard"
+            generate_leaderboard(str(base), str(save_dir))
+
+            import pandas as pd
+            df = pd.read_csv(save_dir / "simulation_leaderboard.csv")
+
+            row_a = df[df["model"] == "model-a"].iloc[0]
+            row_b = df[df["model"] == "model-b"].iloc[0]
+
+            # Display values stay on their own scale (binary %, rating raw mean)
+            self.assertAlmostEqual(row_a["accuracy"], 80.0)
+            self.assertAlmostEqual(row_a["fluency"], 4.0)
+            self.assertAlmostEqual(row_b["accuracy"], 100.0)
+            self.assertAlmostEqual(row_b["fluency"], 1.0)
+
+            # Overall is computed from normalized 0-100 values, so it's
+            # unit-consistent. Adding the rating criterion can no longer
+            # arbitrarily reorder models via unit-mixing.
+            self.assertAlmostEqual(row_a["overall"], 77.5)
+            self.assertAlmostEqual(row_b["overall"], 50.0)
+
+
+# ---------------------------------------------------------------------------
+# Bug 4: STT workbook exporter must tolerate numeric llm_judge_score
+# ---------------------------------------------------------------------------
+
+
+class TestSTTLeaderboardWorkbookRatingTolerant(unittest.TestCase):
+
+    def test_numeric_llm_judge_score_does_not_break_workbook(self):
+        """When a user renames their rating criterion to `llm_judge`,
+        results.csv's llm_judge_score column is numeric. The STT leaderboard
+        workbook exporter used to do `df = df[~df["llm_judge_score"]]`
+        which is bitwise-NOT on ints — producing garbage or errors.
+        The fix skips the boolean-negation filter for non-boolean columns.
+        """
+        import pathlib
+        import pandas as pd
+        from calibrate.stt.leaderboard import generate_leaderboard
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = pathlib.Path(tmp)
+            provider = base / "deepgram"
+            provider.mkdir()
+            (provider / "metrics.json").write_text(
+                json.dumps({
+                    "wer": 0.1,
+                    "string_similarity": 0.9,
+                    "llm_judge_score": 4.2,  # rating mean, not bool
+                })
+            )
+            # results.csv with numeric llm_judge_score (rating scores 3-5)
+            pd.DataFrame([
+                {"id": 1, "gt": "hi", "pred": "hi", "llm_judge_score": 5},
+                {"id": 2, "gt": "bye", "pred": "by", "llm_judge_score": 3},
+                {"id": 3, "gt": "ok", "pred": "ok", "llm_judge_score": 5},
+            ]).to_csv(provider / "results.csv", index=False)
+
+            # Should not raise; should produce a valid workbook
+            generate_leaderboard(str(base))
+
+            xlsx = base / "leaderboard" / "stt_leaderboard.xlsx"
+            self.assertTrue(xlsx.exists())
+
+            # All 3 rows should appear in the per-provider sheet
+            # (filter is skipped because column is numeric)
+            provider_sheet = pd.read_excel(xlsx, sheet_name="deepgram")
+            self.assertEqual(len(provider_sheet), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -198,7 +198,11 @@ def _write_leaderboard_workbook(
         summary_df.to_excel(writer, sheet_name="summary", index=False)
 
         for run_name, df in run_results.items():
-            if "llm_judge_score" in df.columns:
+            # Per-provider sheet shows only failing rows for boolean
+            # llm_judge_score. If the user configures a rating criterion
+            # named llm_judge, the column is numeric and negation is wrong,
+            # so fall back to showing all rows.
+            if "llm_judge_score" in df.columns and df["llm_judge_score"].dtype == bool:
                 df = df[~df["llm_judge_score"]]
             sheet_name = _unique_sheet_name(run_name, sheet_names)
             if df.empty:
