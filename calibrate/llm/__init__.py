@@ -566,6 +566,7 @@ class _Simulations:
 
         # Collect metrics
         metrics_by_criterion = defaultdict(list)
+        criterion_types: dict = {}  # name -> "binary" | "rating"
         all_simulation_metrics = []
 
         for result in results:
@@ -581,11 +582,15 @@ class _Simulations:
                     metrics_by_criterion[eval_result["name"]].append(
                         float(eval_result["value"])
                     )
+                    criterion_types.setdefault(
+                        eval_result["name"], eval_result.get("type", "binary")
+                    )
 
         # Compute summary
         metrics_summary = {}
         for criterion_name, values in metrics_by_criterion.items():
             metrics_summary[criterion_name] = {
+                "type": criterion_types.get(criterion_name, "binary"),
                 "mean": float(np.mean(values)),
                 "std": float(np.std(values)),
                 "values": values,

@@ -310,8 +310,12 @@ class _Simulation:
         if judge:
             if judge.get("model"):
                 kwargs["judge_model"] = judge["model"]
-            if judge.get("stt_model"):
-                kwargs["stt_judge_model"] = judge["stt_model"]
+            # STT judge falls back to judge.model when stt_model is omitted,
+            # matching the config-driven simulation flow in
+            # calibrate/agent/run_simulation.py::_run_single_simulation_inner.
+            stt_model = judge.get("stt_model") or judge.get("model")
+            if stt_model:
+                kwargs["stt_judge_model"] = stt_model
 
         return await _run_simulation(
             system_prompt=system_prompt,
