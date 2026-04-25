@@ -54,7 +54,7 @@ The evaluation runs providers in parallel (max 2 at a time), showing the transcr
 
 ## Judge configuration
 
-By default, a text LLM judge evaluates whether each transcription matches the reference text semantically. You can customize the judge model and add multiple evaluation criteria by passing an optional config file with `--config`:
+By default, a text LLM judge — routed through [OpenRouter](https://openrouter.ai/) (set `OPENROUTER_API_KEY` in your environment) — evaluates whether each transcription matches the reference text semantically. You can customize the judge model and add multiple evaluation criteria by passing an optional config file with `--config`:
 
 ```bash
 calibrate stt -p deepgram google -i ./data -o ./out --config config.json
@@ -65,7 +65,7 @@ The config file supports:
 ```json
 {
   "judge": {
-    "model": "gpt-4.1-2025-04-14"
+    "model": "openai/gpt-4.1"
   },
   "evaluation_criteria": [
     {
@@ -82,7 +82,7 @@ The config file supports:
 
 | Key                   | Type   | Description                                                                 |
 | --------------------- | ------ | --------------------------------------------------------------------------- |
-| `judge.model`         | string | Model used by the LLM judge (default: `gpt-4.1-2025-04-14`)                |
+| `judge.model`         | string | OpenRouter model id used by the LLM judge (default: `openai/gpt-4.1`). Use any model in the [OpenRouter catalog](https://openrouter.ai/models). |
 | `evaluation_criteria` | array  | List of criteria to evaluate. Each criterion has `name` and `description`. |
 
 Each criterion also accepts:

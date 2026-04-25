@@ -187,19 +187,18 @@ class TestBuildCriteriaOutputModel(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-def _mock_openai_responses_parse(return_value: dict):
-    """Helper to build a mock for AsyncOpenAI().responses.parse.
+def _mock_instructor_chat_completions(return_value: dict):
+    """Mock the instructor-patched OpenRouter client used by text_judge.
 
-    The real client returns an object with .output_parsed (a Pydantic model).
-    We fake that with a simple object whose .model_dump() returns the dict.
+    text_judge calls ``instructor.apatch(_build_openrouter_client()).chat.
+    completions.create(...)`` which returns a Pydantic instance directly;
+    the judge then calls ``.model_dump()`` to get the result dict.
     """
     parsed = MagicMock()
     parsed.model_dump.return_value = return_value
-    api_response = MagicMock()
-    api_response.output_parsed = parsed
 
     client = MagicMock()
-    client.responses.parse = AsyncMock(return_value=api_response)
+    client.chat.completions.create = AsyncMock(return_value=parsed)
     return client
 
 
@@ -209,9 +208,10 @@ class TestTextJudge(unittest.IsolatedAsyncioTestCase):
             "accuracy": {"reasoning": "good", "match": True},
             "tone": {"reasoning": "rude", "match": False},
         }
-        client = _mock_openai_responses_parse(expected)
+        client = _mock_instructor_chat_completions(expected)
 
-        with patch("calibrate.judges.AsyncOpenAI", return_value=client):
+        with patch("calibrate.judges.instructor.apatch", return_value=client), \
+             patch("calibrate.judges._build_openrouter_client", return_value=MagicMock()):
             result = await text_judge(
                 criteria=[
                     {"name": "accuracy", "description": "correct"},
@@ -223,46 +223,64 @@ class TestTextJudge(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, expected)
 
     async def test_uses_default_model_when_not_specified(self):
-        client = _mock_openai_responses_parse(
+        client = _mock_instructor_chat_completions(
             {"criteria": {"reasoning": "ok", "match": True}}
         )
-        with patch("calibrate.judges.AsyncOpenAI", return_value=client):
+        with patch("calibrate.judges.instructor.apatch", return_value=client), \
+             patch("calibrate.judges._build_openrouter_client", return_value=MagicMock()):
             await text_judge(
                 criteria=[{"name": "criteria", "description": "x"}],
                 user_prompt="ctx",
             )
-        call_kwargs = client.responses.parse.call_args.kwargs
+        call_kwargs = client.chat.completions.create.call_args.kwargs
         self.assertEqual(call_kwargs["model"], DEFAULT_TEXT_JUDGE_MODEL)
 
     async def test_passes_custom_model(self):
-        client = _mock_openai_responses_parse(
+        client = _mock_instructor_chat_completions(
             {"criteria": {"reasoning": "ok", "match": True}}
         )
-        with patch("calibrate.judges.AsyncOpenAI", return_value=client):
+        with patch("calibrate.judges.instructor.apatch", return_value=client), \
+             patch("calibrate.judges._build_openrouter_client", return_value=MagicMock()):
             await text_judge(
                 criteria=[{"name": "criteria", "description": "x"}],
                 user_prompt="ctx",
                 model="custom-model",
             )
         self.assertEqual(
-            client.responses.parse.call_args.kwargs["model"], "custom-model"
+            client.chat.completions.create.call_args.kwargs["model"], "custom-model"
         )
 
     async def test_criteria_appear_in_user_prompt(self):
-        client = _mock_openai_responses_parse(
+        client = _mock_instructor_chat_completions(
             {"accuracy": {"reasoning": "ok", "match": True}}
         )
-        with patch("calibrate.judges.AsyncOpenAI", return_value=client):
+        with patch("calibrate.judges.instructor.apatch", return_value=client), \
+             patch("calibrate.judges._build_openrouter_client", return_value=MagicMock()):
             await text_judge(
                 criteria=[{"name": "accuracy", "description": "UNIQUE-CRITERION-TEXT"}],
                 user_prompt="SOME-CTX-MARKER",
             )
 
         # Check the user message contains the context and criterion description
-        messages = client.responses.parse.call_args.kwargs["input"]
+        messages = client.chat.completions.create.call_args.kwargs["messages"]
         user_msg = next(m for m in messages if m["role"] == "user")
         self.assertIn("SOME-CTX-MARKER", user_msg["content"])
         self.assertIn("UNIQUE-CRITERION-TEXT", user_msg["content"])
+
+    async def test_uses_openrouter_client(self):
+        """Sanity: text_judge must call _build_openrouter_client (not vanilla
+        AsyncOpenAI) so requests go to the OpenRouter base URL."""
+        client = _mock_instructor_chat_completions(
+            {"x": {"reasoning": "ok", "match": True}}
+        )
+        build_mock = MagicMock(return_value=MagicMock())
+        with patch("calibrate.judges.instructor.apatch", return_value=client), \
+             patch("calibrate.judges._build_openrouter_client", build_mock):
+            await text_judge(
+                criteria=[{"name": "x", "description": "y"}],
+                user_prompt="ctx",
+            )
+        build_mock.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -368,14 +386,14 @@ class TestAudioJudge(unittest.IsolatedAsyncioTestCase):
             parsed = MagicMock()
             parsed.model_dump.return_value = expected
 
-            # audio_judge uses instructor.apatch(AsyncOpenAI()) then chat.completions.create.
-            # We mock instructor.apatch to return a client whose create() returns
-            # a pydantic-ish object whose .model_dump() returns expected.
+            # audio_judge wraps an OpenRouter-pointed AsyncOpenAI in
+            # instructor.apatch then calls chat.completions.create. Mock the
+            # patched client so create() returns a pydantic-ish object.
             mock_client = MagicMock()
             mock_client.chat.completions.create = AsyncMock(return_value=parsed)
 
             with patch("calibrate.judges.instructor.apatch", return_value=mock_client), \
-                 patch("calibrate.judges.AsyncOpenAI", return_value=MagicMock()):
+                 patch("calibrate.judges._build_openrouter_client", return_value=MagicMock()):
                 result = await audio_judge(
                     criteria=[
                         {"name": "intelligibility", "description": "clear speech"},

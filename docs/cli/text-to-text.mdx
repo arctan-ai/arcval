@@ -177,16 +177,16 @@ For agent connection, your agent owns its tools internally — there is no need 
 
 ## Judge configuration
 
-By default, response-type test cases are evaluated by a text LLM judge. You can override the judge model via an optional top-level `judge` key:
+By default, response-type test cases are evaluated by a text LLM judge that routes through [OpenRouter](https://openrouter.ai/) — set `OPENROUTER_API_KEY` in your environment. You can override the judge model via an optional top-level `judge` key:
 
 | Key     | Type   | Description                                                        |
 | ------- | ------ | ------------------------------------------------------------------ |
-| `model` | string | Model used by the LLM judge (default: `gpt-4.1-2025-04-14`)       |
+| `model` | string | OpenRouter model id used by the LLM judge (default: `openai/gpt-4.1`). Use any model in the [OpenRouter catalog](https://openrouter.ai/models). |
 
 ```json
 {
   "judge": {
-    "model": "gpt-4.1-2025-04-14"
+    "model": "openai/gpt-4.1"
   }
 }
 ```

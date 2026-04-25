@@ -1,6 +1,6 @@
 {
   "judge": {
-    "model": "gpt-audio-2025-08-28"
+    "model": "openai/gpt-4o-audio-preview"
   },
   "evaluation_criteria": [
     {

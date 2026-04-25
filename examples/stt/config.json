@@ -1,6 +1,6 @@
 {
   "judge": {
-    "model": "gpt-4.1-2025-04-14"
+    "model": "openai/gpt-4.1"
   },
   "evaluation_criteria": [
     {

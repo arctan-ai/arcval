@@ -132,17 +132,17 @@ Optional settings to control the simulation:
 
 ## Judge configuration
 
-By default, the evaluation criteria are scored by a text LLM judge. You can override the judge model via an optional top-level `judge` key:
+By default, the evaluation criteria are scored by a text LLM judge that routes through [OpenRouter](https://openrouter.ai/) — set `OPENROUTER_API_KEY` in your environment. You can override the judge model via an optional top-level `judge` key:
 
 | Key         | Type   | Description                                                                                          |
 | ----------- | ------ | ---------------------------------------------------------------------------------------------------- |
-| `model`     | string | Model used by the evaluation judge (default: `gpt-5.2-2025-12-11`)                                  |
-| `stt_model` | string | Model used by the STT judge in voice simulations (default: `gpt-4.1-2025-04-14`, falls back to `model`) |
+| `model`     | string | OpenRouter model id for the evaluation judge (default: `openai/gpt-5.2`)                            |
+| `stt_model` | string | OpenRouter model id for the STT judge in voice simulations (default: `openai/gpt-4.1`, falls back to `model`) |
 
 ```json
 {
   "judge": {
-    "model": "gpt-5.2-2025-12-11"
+    "model": "openai/gpt-5.2"
   }
 }
 ```

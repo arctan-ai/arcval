@@ -40,7 +40,7 @@ The evaluation runs providers in parallel (max 2 at a time), showing the progres
 
 ## Judge configuration
 
-By default, an audio LLM judge evaluates whether each synthesized audio matches the reference text. You can customize the judge model and add multiple evaluation criteria by passing an optional config file with `--config`:
+By default, an audio LLM judge — routed through [OpenRouter](https://openrouter.ai/) (set `OPENROUTER_API_KEY` in your environment) — evaluates whether each synthesized audio matches the reference text. The judge sends the audio as a base64-encoded `input_audio` block, supported via [OpenRouter's multimodal audio API](https://openrouter.ai/docs/guides/overview/multimodal/audio). You can customize the judge model and add multiple evaluation criteria by passing an optional config file with `--config`:
 
 ```bash
 calibrate tts -p openai google -i sample.csv -o ./out --config config.json
@@ -51,7 +51,7 @@ The config file supports:
 ```json
 {
   "judge": {
-    "model": "gpt-audio-2025-08-28"
+    "model": "openai/gpt-4o-audio-preview"
   },
   "evaluation_criteria": [
     {
@@ -68,7 +68,7 @@ The config file supports:
 
 | Key                   | Type   | Description                                                                                |
 | --------------------- | ------ | ------------------------------------------------------------------------------------------ |
-| `judge.model`         | string | Model used by the LLM judge (default: `gpt-audio-2025-08-28`). Must be an audio-capable model. |
+| `judge.model`         | string | OpenRouter model id used by the LLM judge (default: `openai/gpt-4o-audio-preview`). Must be an audio-capable model in the [OpenRouter catalog](https://openrouter.ai/models). |
 | `evaluation_criteria` | array  | List of criteria to evaluate. Each criterion has `name` and `description`.                 |
 
 Each criterion also accepts:

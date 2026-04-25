@@ -9,6 +9,7 @@ Both accept a list of evaluation criteria and return per-criterion results.
 """
 
 import base64
+import os
 from typing import Literal, Optional
 
 import instructor
@@ -17,12 +18,28 @@ from pydantic import BaseModel, Field, create_model
 from calibrate.langfuse import AsyncOpenAI, observe, langfuse, langfuse_enabled
 
 
-# ── Default models ──────────────────────────────────────────────────────────
-DEFAULT_TEXT_JUDGE_MODEL = "gpt-4.1-2025-04-14"
-DEFAULT_AUDIO_JUDGE_MODEL = "gpt-audio-2025-08-28"
+# ── OpenRouter configuration ────────────────────────────────────────────────
+# All judges (text + audio) route through OpenRouter so users only need to
+# configure a single API key (OPENROUTER_API_KEY) and gain access to the full
+# model catalog. OpenRouter is drop-in compatible with the OpenAI Chat
+# Completions API.
+_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+
+def _build_openrouter_client() -> "AsyncOpenAI":
+    """Return an AsyncOpenAI client pointed at OpenRouter."""
+    return AsyncOpenAI(
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        base_url=_OPENROUTER_BASE_URL,
+    )
+
+
+# ── Default models (OpenRouter format: <provider>/<model>) ──────────────────
+DEFAULT_TEXT_JUDGE_MODEL = "openai/gpt-4.1"
 # Simulation uses a stronger model by default for grading multi-turn conversations
-DEFAULT_SIMULATION_JUDGE_MODEL = "gpt-5.2-2025-12-11"
+DEFAULT_SIMULATION_JUDGE_MODEL = "openai/gpt-5.2"
+# OpenRouter's audio-capable OpenAI model. Override via judge.model when needed.
+DEFAULT_AUDIO_JUDGE_MODEL = "openai/gpt-4o-audio-preview"
 
 # ── Default criteria per test type ──────────────────────────────────────────
 
@@ -286,18 +303,23 @@ async def text_judge(
     model: str = DEFAULT_TEXT_JUDGE_MODEL,
     system_prompt: str = None,
 ) -> dict:
-    """Multi-criteria text judge.
+    """Multi-criteria text judge — routes through OpenRouter.
+
+    Uses ``instructor`` over Chat Completions (instead of OpenAI's
+    Responses API) because OpenRouter is OpenAI-Chat-Completions
+    compatible but does not implement ``responses.parse``.
 
     Args:
         criteria: List of {"name": str, "description": str} dicts.
         user_prompt: The full user prompt containing the context to evaluate.
-        model: LLM model to use.
-        system_prompt: Override for the system prompt (used internally for simulation judge).
+        model: OpenRouter model id (e.g. ``openai/gpt-4.1``).
+        system_prompt: Override for the system prompt (used internally
+            for simulation judge).
 
     Returns:
         Dict keyed by criterion name, each value {"reasoning": str, "match": bool}.
     """
-    client = AsyncOpenAI()
+    client = instructor.apatch(_build_openrouter_client())
 
     Output = build_criteria_output_model(criteria)
     _system_prompt = system_prompt or _TEXT_JUDGE_SYSTEM_PROMPT
@@ -305,19 +327,18 @@ async def text_judge(
     criteria_prompt = format_criteria_prompt(criteria)
     full_user_prompt = f"{user_prompt}\n\n`Evaluation criteria`:\n\n{criteria_prompt}"
 
-    response = await client.responses.parse(
+    response = await client.chat.completions.create(
         model=model,
-        input=[
+        messages=[
             {"role": "system", "content": _system_prompt},
             {"role": "user", "content": full_user_prompt},
         ],
-        text_format=Output,
+        response_model=Output,
         temperature=0,
-        max_output_tokens=8192,
-        store=True,
+        max_completion_tokens=8192,
     )
 
-    result = response.output_parsed.model_dump()
+    result = response.model_dump()
 
     if langfuse_enabled and langfuse:
         langfuse.update_current_span(
@@ -341,18 +362,23 @@ async def audio_judge(
     reference_text: str,
     model: str = DEFAULT_AUDIO_JUDGE_MODEL,
 ) -> dict:
-    """Multi-criteria audio judge for TTS evaluation.
+    """Multi-criteria audio judge for TTS evaluation — routes through OpenRouter.
+
+    The audio is sent as a base64-encoded ``input_audio`` content block,
+    which OpenRouter forwards to audio-capable upstream models (see
+    https://openrouter.ai/docs/guides/overview/multimodal/audio).
 
     Args:
         criteria: List of {"name": str, "description": str} dicts.
         audio_path: Path to the WAV audio file to evaluate.
         reference_text: The text that should have been spoken.
-        model: LLM model to use (must be audio-capable).
+        model: OpenRouter model id of an audio-capable model
+            (default: ``openai/gpt-4o-audio-preview``).
 
     Returns:
         Dict keyed by criterion name, each value {"reasoning": str, "match": bool}.
     """
-    client = instructor.apatch(AsyncOpenAI())
+    client = instructor.apatch(_build_openrouter_client())
 
     Output = build_criteria_output_model(criteria)
     criteria_prompt = format_criteria_prompt(criteria)
@@ -385,13 +411,8 @@ async def audio_judge(
             },
         ],
         response_model=Output,
-        modalities=["text"],
         temperature=0,
         max_completion_tokens=8192,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0,
-        store=True,
     )
 
     result = response.model_dump()
