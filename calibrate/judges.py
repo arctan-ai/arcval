@@ -126,6 +126,36 @@ def is_rating(criterion: dict) -> bool:
     return criterion.get("type") == RATING
 
 
+def compat_llm_judge_score(scores: dict) -> Optional[float]:
+    """Compute a 0-1 backward-compatible aggregate from per-criterion ``scores``.
+
+    ``scores`` is the dict produced by ``get_llm_judge_score`` /
+    ``get_tts_llm_judge_score``: ``{criterion_name: {type, mean, scale_min?,
+    scale_max?}}``. For binary criteria the mean is already in 0-1; for rating
+    criteria the mean is rescaled via ``(mean - scale_min) / (scale_max -
+    scale_min)``. The return is the unweighted mean across criteria.
+
+    Used to populate ``metrics.json``'s ``llm_judge_score`` key for legacy
+    UI/report consumers when the user provides custom criterion names.
+    Returns ``None`` if no usable scores were given.
+    """
+    normalized: list[float] = []
+    for score_dict in scores.values():
+        if not isinstance(score_dict, dict) or "mean" not in score_dict:
+            continue
+        mean = float(score_dict["mean"])
+        if score_dict.get("type") == "rating":
+            lo = float(score_dict.get("scale_min", 0))
+            hi = float(score_dict.get("scale_max", 1))
+            rng = hi - lo
+            normalized.append((mean - lo) / rng if rng > 0 else 0.0)
+        else:
+            normalized.append(mean)
+    if not normalized:
+        return None
+    return float(sum(normalized) / len(normalized))
+
+
 def criterion_result_value(criterion: dict, result: dict) -> float:
     """Extract the numeric value from a per-criterion judge result.
 

@@ -32,7 +32,11 @@ from calibrate.utils import (
     validate_tts_language,
 )
 from calibrate.tts.metrics import get_tts_llm_judge_score
-from calibrate.judges import is_rating, DEFAULT_TTS_CRITERIA
+from calibrate.judges import (
+    compat_llm_judge_score,
+    is_rating,
+    DEFAULT_TTS_CRITERIA,
+)
 from calibrate.langfuse import (
     observe,
     langfuse,
@@ -766,6 +770,13 @@ async def run_single_provider_eval(
     for name, score_dict in llm_judge_results["scores"].items():
         metrics_data[f"{name}_score"] = score_dict["mean"]
         metrics_data[f"{name}_info"] = score_dict
+    # Backward-compat aggregate: existing UI/report consumers read
+    # `llm_judge_score`. When the user keeps the default criterion name it's
+    # already populated above; otherwise fall back to a 0-1 normalized mean.
+    if "llm_judge_score" not in metrics_data:
+        compat = compat_llm_judge_score(llm_judge_results["scores"])
+        if compat is not None:
+            metrics_data["llm_judge_score"] = compat
 
     # Add ttfb metrics with mean, std, and values (filter out None/NaN values)
     valid_ttfb = [
@@ -810,6 +821,16 @@ async def run_single_provider_eval(
             else:
                 row[f"{name}_score"] = bool(crit_result["match"])
             row[f"{name}_reasoning"] = crit_result["reasoning"]
+        # Backward-compat per-row aggregate: True iff all binary criteria
+        # match (rating criteria informational). UI consumers reading
+        # `llm_judge_score` keep working when custom criterion names are used.
+        if "llm_judge_score" not in row:
+            binary_results = [
+                bool(llm_row[c["name"]]["match"])
+                for c in _criteria_by_name.values()
+                if not is_rating(c)
+            ]
+            row["llm_judge_score"] = all(binary_results) if binary_results else True
         data.append(row)
 
     pd.DataFrame(data).to_csv(results_csv_path, index=False)

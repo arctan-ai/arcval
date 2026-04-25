@@ -443,5 +443,137 @@ class TestSimulationLeaderboardChartNormalizesRating(unittest.TestCase):
             self.assertGreater(chart_path.stat().st_size, 1000)
 
 
+# ---------------------------------------------------------------------------
+# Bug 8: STT/TTS metrics.json must keep llm_judge_score for legacy consumers
+# ---------------------------------------------------------------------------
+
+
+class TestCompatLLMJudgeScoreHelper(unittest.TestCase):
+    """Pure-function helper used by both STT and TTS to compute the
+    backward-compat `llm_judge_score` aggregate."""
+
+    def test_default_single_binary_criterion_passes_through(self):
+        from calibrate.judges import compat_llm_judge_score
+
+        scores = {"llm_judge": {"type": "binary", "mean": 0.85}}
+        self.assertAlmostEqual(compat_llm_judge_score(scores), 0.85)
+
+    def test_multi_binary_means_averaged(self):
+        from calibrate.judges import compat_llm_judge_score
+
+        scores = {
+            "semantic_match": {"type": "binary", "mean": 1.0},
+            "completeness": {"type": "binary", "mean": 0.5},
+        }
+        self.assertAlmostEqual(compat_llm_judge_score(scores), 0.75)
+
+    def test_rating_criterion_normalized_to_0_1(self):
+        from calibrate.judges import compat_llm_judge_score
+
+        scores = {
+            "fluency": {
+                "type": "rating",
+                "mean": 4.0,
+                "scale_min": 1,
+                "scale_max": 5,
+            }
+        }
+        # (4 - 1) / (5 - 1) = 0.75
+        self.assertAlmostEqual(compat_llm_judge_score(scores), 0.75)
+
+    def test_mixed_binary_and_rating(self):
+        from calibrate.judges import compat_llm_judge_score
+
+        scores = {
+            "accuracy": {"type": "binary", "mean": 1.0},
+            "fluency": {
+                "type": "rating",
+                "mean": 1.0,  # min of scale → 0 normalized
+                "scale_min": 1,
+                "scale_max": 5,
+            },
+        }
+        # mean(1.0, 0.0) = 0.5
+        self.assertAlmostEqual(compat_llm_judge_score(scores), 0.5)
+
+    def test_empty_scores_returns_none(self):
+        from calibrate.judges import compat_llm_judge_score
+
+        self.assertIsNone(compat_llm_judge_score({}))
+
+
+class TestSTTEvalBackwardCompatLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
+    """End-to-end: STT eval with custom criterion names must still emit
+    `llm_judge_score` so the Ink UI's existing consumers don't break."""
+
+    async def test_metrics_json_has_llm_judge_score_with_custom_criterion(self):
+        from calibrate.stt import eval as stt_eval
+
+        # Mock get_llm_judge_score to return scores under custom names only
+        async def fake_judge_score(*args, **kwargs):
+            return {
+                "criteria_names": ["semantic_match"],
+                "scores": {
+                    "semantic_match": {"type": "binary", "mean": 0.75},
+                },
+                "score": 0.75,
+                "per_row": [{"semantic_match": {"match": True, "reasoning": "ok"}}],
+            }
+
+        # Mock the STT inference and metric helpers used inside run_single_provider_eval
+        async def fake_run_stt_eval(**kwargs):
+            return 1  # success_count
+
+        def fake_validate_input_dir(*args, **kwargs):
+            return True, None
+
+        def fake_wer(refs, preds):
+            return {"score": 0.1, "per_row": [0.1]}
+
+        def fake_sim(refs, preds):
+            return {"score": 0.9, "per_row": [0.9]}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir = os.path.join(tmp, "data")
+            os.makedirs(os.path.join(input_dir, "audios"))
+            # Write the input CSV
+            with open(os.path.join(input_dir, "stt.csv"), "w") as f:
+                f.write("id,text\nx1,hello world\n")
+            # Pre-seed the per-provider results.csv that run_stt_eval would create
+            provider_dir = os.path.join(tmp, "out", "deepgram")
+            os.makedirs(provider_dir)
+            with open(os.path.join(provider_dir, "results.csv"), "w") as f:
+                f.write("id,gt,pred\nx1,hello world,hello world\n")
+
+            with patch.object(stt_eval, "run_stt_eval", side_effect=fake_run_stt_eval), \
+                 patch.object(stt_eval, "validate_stt_input_dir", side_effect=fake_validate_input_dir), \
+                 patch.object(stt_eval, "get_wer_score", side_effect=fake_wer), \
+                 patch.object(stt_eval, "get_string_similarity", side_effect=fake_sim), \
+                 patch.object(stt_eval, "get_llm_judge_score", side_effect=fake_judge_score):
+                await stt_eval.run_single_provider_eval(
+                    provider="deepgram",
+                    language="english",
+                    input_dir=input_dir,
+                    input_file_name="stt.csv",
+                    output_dir=os.path.join(tmp, "out"),
+                    debug=False,
+                    debug_count=5,
+                    ignore_retry=True,  # skip retry loop
+                    overwrite=False,
+                    judge_criteria=[
+                        {"name": "semantic_match", "description": "values match"}
+                    ],
+                )
+
+            with open(os.path.join(provider_dir, "metrics.json")) as f:
+                metrics = json.load(f)
+
+        # Custom criterion column is present
+        self.assertIn("semantic_match_score", metrics)
+        # Backward-compat aggregate also present
+        self.assertIn("llm_judge_score", metrics)
+        self.assertAlmostEqual(metrics["llm_judge_score"], 0.75)
+
+
 if __name__ == "__main__":
     unittest.main()

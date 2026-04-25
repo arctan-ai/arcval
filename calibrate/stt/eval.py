@@ -35,7 +35,11 @@ from calibrate.stt.metrics import (
     get_llm_judge_score,
     get_string_similarity,
 )
-from calibrate.judges import is_rating, DEFAULT_STT_CRITERIA
+from calibrate.judges import (
+    compat_llm_judge_score,
+    is_rating,
+    DEFAULT_STT_CRITERIA,
+)
 from calibrate.langfuse import (
     create_langfuse_audio_media,
     observe,
@@ -875,6 +879,13 @@ async def run_single_provider_eval(
     for name, score_dict in llm_results["scores"].items():
         metrics_data[f"{name}_score"] = score_dict["mean"]
         metrics_data[f"{name}_info"] = score_dict
+    # Backward-compat aggregate: existing UI/report consumers read
+    # `llm_judge_score`. When the user keeps the default criterion name it's
+    # already populated above; otherwise fall back to a 0-1 normalized mean.
+    if "llm_judge_score" not in metrics_data:
+        compat = compat_llm_judge_score(llm_results["scores"])
+        if compat is not None:
+            metrics_data["llm_judge_score"] = compat
 
     data = []
     for _id, gt_text, pred_text, wer, sim, llm_row in zip(
@@ -900,6 +911,17 @@ async def run_single_provider_eval(
             else:
                 row[f"{name}_score"] = bool(crit_result["match"])
             row[f"{name}_reasoning"] = crit_result["reasoning"]
+        # Backward-compat per-row aggregate: True iff all binary criteria
+        # match. Rating criteria are informational (consistent with
+        # `passed` semantics in LLM tests). UI consumers reading
+        # `llm_judge_score` keep working with custom criterion names.
+        if "llm_judge_score" not in row:
+            binary_results = [
+                bool(llm_row[c["name"]]["match"])
+                for c in _criteria_by_name.values()
+                if not is_rating(c)
+            ]
+            row["llm_judge_score"] = all(binary_results) if binary_results else True
         data.append(row)
 
     metrics_save_path = join(provider_output_dir, "metrics.json")
