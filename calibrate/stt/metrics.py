@@ -15,6 +15,7 @@ from calibrate.judges import (
     text_judge,
     is_rating,
     criterion_result_value,
+    STT_JUDGE_SYSTEM_PROMPT,
     DEFAULT_TEXT_JUDGE_MODEL,
     DEFAULT_STT_CRITERIA,
 )
@@ -88,6 +89,7 @@ async def stt_llm_judge(
         criteria=criteria_list,
         user_prompt=user_prompt,
         model=model,
+        system_prompt=STT_JUDGE_SYSTEM_PROMPT,
     )
 
     if langfuse_enabled and langfuse:

@@ -8,6 +8,7 @@ from calibrate.judges import (
     text_judge,
     simulation_judge,
     normalize_criteria,
+    LLM_TEST_JUDGE_SYSTEM_PROMPT,
     DEFAULT_TEXT_JUDGE_MODEL,
     DEFAULT_SIMULATION_JUDGE_MODEL,
 )
@@ -49,13 +50,14 @@ async def test_response_llm_judge(
 
     user_prompt = (
         f"`Chat history`:\n\n{conversation_as_prompt}\n\n"
-        f"`Response to evaluation`:\n\n{response}"
+        f"`Response to evaluate`:\n\n{response}"
     )
 
     result = await text_judge(
         criteria=criteria_list,
         user_prompt=user_prompt,
         model=model,
+        system_prompt=LLM_TEST_JUDGE_SYSTEM_PROMPT,
     )
 
     # Backward compat: if original criteria was a string, return flat {reasoning, match}

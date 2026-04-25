@@ -35,18 +35,11 @@ DEFAULT_LLM_TEST_CRITERIA = [
 
 DEFAULT_STT_CRITERIA = [
     {
+        # Default STT criterion — the detailed matching rules live in
+        # STT_JUDGE_SYSTEM_PROMPT, so this description stays short to avoid
+        # redundancy in the final user prompt.
         "name": "llm_judge",
-        "description": (
-            "Check whether the values represented by both the strings match. "
-            "E.g. if one string says 1,2,3 but the other string says 'one, two, three' "
-            "or 'one, 2, three', they should be considered the same as their underlying "
-            "value is the same. However, if the actual values itself are different, "
-            "e.g. for the name of a person or address or the value of any other key "
-            "detail - that difference should be noted. "
-            "Ignore differences like a word being split up into more than 1 word by spaces. "
-            "Look at whether the values mean the same in both the strings. "
-            "If all the values for the strings match, mark it as True. Else, False."
-        ),
+        "description": "Does the transcription match the source per the rules above?",
     }
 ]
 
@@ -63,12 +56,43 @@ DEFAULT_TTS_CRITERIA = [
 
 # ── System prompts (internal, not user-configurable) ────────────────────────
 
+# Generic fallback — used only when a caller doesn't provide a specialized prompt.
 _TEXT_JUDGE_SYSTEM_PROMPT = (
     "You are a highly accurate evaluator.\n\n"
     "You will be given some context and a set of evaluation criteria.\n\n"
     "You need to evaluate the context against each criterion and determine "
     "whether it passes or fails. Always give your reasoning in English "
     "irrespective of the language of the content."
+)
+
+# LLM test judge — preserves the pre-refactor framing.
+LLM_TEST_JUDGE_SYSTEM_PROMPT = (
+    "You are a highly accurate evaluator evaluating the response to a "
+    "conversation.\n\n"
+    "You will be given a conversation between a user and a human agent along "
+    "with the response of the human agent to the final user message and an "
+    "evaluation criteria to use for evaluating the agent's final response.\n\n"
+    "You need to evaluate if the response adheres to the evaluation criteria."
+)
+
+# STT judge — preserves the pre-refactor framing (rules live here, not in
+# the criterion description, so default behavior matches what users had before).
+STT_JUDGE_SYSTEM_PROMPT = (
+    "You are a highly accurate evaluator evaluating the transcription output "
+    "of an STT model.\n\n"
+    "You will be given two strings - one is the source string used to produce "
+    "an audio and the other is the transcription of that audio.\n\n"
+    "You need to evaluate if the two strings are the same.\n\n"
+    "# Important Instructions:\n"
+    "- Check whether the values represented by both the strings match. "
+    "E.g. if one string says 1,2,3 but the other string says \"one, two, three\" "
+    "or \"one, 2, three\", they should be considered the same as their "
+    "underlying value is the same. However, if the actual values itself are "
+    "different, e.g. for the name of a person or address or the value of any "
+    "other key detail - that difference should be noted.\n"
+    "- Ignore differences like a word being split up into more than 1 word by "
+    "spaces. Look at whether the values mean the same in both the strings.\n"
+    "- If all the \"values\" for the strings match, mark it as True. Else, False."
 )
 
 _SIMULATION_JUDGE_SYSTEM_PROMPT = (
@@ -81,12 +105,13 @@ _SIMULATION_JUDGE_SYSTEM_PROMPT = (
     "language of the conversation."
 )
 
+# TTS judge — preserves the pre-refactor framing.
 _AUDIO_JUDGE_SYSTEM_PROMPT = (
     "You are a highly accurate evaluator evaluating the audio output of a "
-    "Text-to-Speech model.\n\n"
+    "TTS model.\n\n"
     "You will be given the audio and the text that should have been spoken "
-    "in the audio, along with evaluation criteria.\n\n"
-    "You need to evaluate the audio against each criterion."
+    "in the audio.\n\n"
+    "You need to evaluate if the text is easily understandable from the audio."
 )
 
 
