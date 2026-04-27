@@ -16,7 +16,6 @@ from calibrate.langfuse import observe
 
 # Re-export defaults for existing imports
 DEFAULT_JUDGE_MODEL = DEFAULT_TEXT_JUDGE_MODEL
-DEFAULT_SIMULATION_JUDGE_MODEL = DEFAULT_SIMULATION_JUDGE_MODEL
 
 
 @observe(

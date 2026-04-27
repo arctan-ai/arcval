@@ -48539,6 +48539,62 @@ import { spawn as spawn2 } from "node:child_process";
 import fs5 from "node:fs";
 import path4 from "node:path";
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+function parseCsvRows(content) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < content.length) {
+    const c = content[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (content[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (c === ",") {
+      row.push(field);
+      field = "";
+      i++;
+      continue;
+    }
+    if (c === "\n" || c === "\r") {
+      if (c === "\r" && content[i + 1] === "\n") i++;
+      row.push(field);
+      field = "";
+      if (row.length > 1 || row.length === 1 && row[0] !== "") {
+        rows.push(row);
+      }
+      row = [];
+      i++;
+      continue;
+    }
+    field += c;
+    i++;
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    if (row.length > 1 || row.length === 1 && row[0] !== "") {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
 var OPENAI_MODEL_EXAMPLES2 = [
   "gpt-4.1",
   "gpt-4.1-mini",
@@ -49053,31 +49109,25 @@ function SimulationsApp({ onBack }) {
         }
         try {
           const content = fs5.readFileSync(evalPath, "utf-8");
-          const lines = content.trim().split("\n");
-          if (lines.length < 2) continue;
+          const rows = parseCsvRows(content);
+          if (rows.length < 2) continue;
+          const header2 = rows[0].map((h) => h.trim().toLowerCase());
+          const nameIdx = header2.indexOf("name");
+          const typeIdx = header2.indexOf("type");
+          const valueIdx = header2.indexOf("value");
+          const reasoningIdx = header2.indexOf("reasoning");
+          if (nameIdx === -1 || valueIdx === -1) continue;
           const criteria = [];
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i];
-            const firstComma = line.indexOf(",");
-            if (firstComma === -1) continue;
-            const name = line.slice(0, firstComma).trim();
-            const rest = line.slice(firstComma + 1);
-            let valueStr = "";
-            let reasoningStart = 0;
-            for (let j = 0; j < rest.length; j++) {
-              if (rest[j] === "," || rest[j] === '"') {
-                valueStr = rest.slice(0, j).trim();
-                reasoningStart = rest[j] === "," ? j + 1 : j;
-                break;
-              }
-            }
-            let reasoning = rest.slice(reasoningStart).trim();
-            if (reasoning.startsWith('"') && reasoning.endsWith('"')) {
-              reasoning = reasoning.slice(1, -1).replace(/""/g, '"');
-            }
+          for (let i = 1; i < rows.length; i++) {
+            const cols = rows[i];
+            const name = (cols[nameIdx] ?? "").trim();
+            const evalType = typeIdx !== -1 ? (cols[typeIdx] ?? "").trim() : "";
+            const valueStr = (cols[valueIdx] ?? "").trim();
+            const reasoning = reasoningIdx !== -1 ? (cols[reasoningIdx] ?? "").trim() : "";
+            if (!name) continue;
             const value = parseFloat(valueStr);
             if (!isNaN(value)) {
-              criteria.push({ name, value, reasoning });
+              criteria.push({ name, type: evalType, value, reasoning });
             }
           }
           results.push({
@@ -49593,31 +49643,61 @@ function SimulationsApp({ onBack }) {
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { bold: true, children: "Evaluation" }) }),
-          criteria.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: "yellow", children: "No evaluation results found." }) : criteria.map((c, idx) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
-            Box_default,
-            {
-              flexDirection: "column",
-              marginBottom: 1,
-              borderStyle: "single",
-              borderColor: c.value >= 0.5 ? "green" : "red",
-              paddingX: 1,
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { bold: true, children: c.name.replace(/_/g, " ") }),
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { children: " " }),
-                  c.value >= 0.5 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Text, { color: "green", bold: true, children: [
-                    c.value.toFixed(1),
-                    " \u2713"
-                  ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Text, { color: "red", bold: true, children: [
-                    c.value.toFixed(1),
-                    " \u2717"
-                  ] })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { wrap: "wrap", children: c.reasoning }) })
-              ]
-            },
-            idx
-          )),
+          (() => {
+            const evaluatorRows = criteria.filter((c) => c.type);
+            const otherMetrics = criteria.filter((c) => !c.type);
+            if (criteria.length === 0) {
+              return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { color: "yellow", children: "No evaluation results found." });
+            }
+            return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+              evaluatorRows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { dimColor: true, children: "No evaluators ran for this simulation." }) : evaluatorRows.map((c, idx) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+                Box_default,
+                {
+                  flexDirection: "column",
+                  marginBottom: 1,
+                  borderStyle: "single",
+                  borderColor: c.value >= 0.5 ? "green" : "red",
+                  paddingX: 1,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { bold: true, children: c.name.replace(/_/g, " ") }),
+                      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { children: " " }),
+                      c.value >= 0.5 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Text, { color: "green", bold: true, children: [
+                        c.value.toFixed(1),
+                        " \u2713"
+                      ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Text, { color: "red", bold: true, children: [
+                        c.value.toFixed(1),
+                        " \u2717"
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { wrap: "wrap", children: c.reasoning }) })
+                  ]
+                },
+                idx
+              )),
+              otherMetrics.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { flexDirection: "column", marginTop: 1, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { bold: true, children: "Other Metrics" }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                  Table,
+                  {
+                    columns: [
+                      { key: "name", label: "Metric", width: 30 },
+                      {
+                        key: "value",
+                        label: "Value",
+                        width: 14,
+                        align: "right"
+                      }
+                    ],
+                    data: otherMetrics.map((c) => ({
+                      name: c.name,
+                      value: Math.abs(c.value) >= 100 || Number.isInteger(c.value) ? c.value.toFixed(2) : c.value.toFixed(3)
+                    }))
+                  }
+                )
+              ] })
+            ] });
+          })(),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { dimColor: true, children: "Press q or Esc to go back to results" }) })
         ] });
       }
@@ -49687,14 +49767,18 @@ function SimulationsApp({ onBack }) {
                     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { bold: true, children: "Scenario: " }),
                     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { children: scenarioLabel })
                   ] }),
-                  r.criteria.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { flexDirection: "column", marginTop: 1, children: r.criteria.map((c, cIdx) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { width: 30, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { dimColor: true, children: c.name.replace(/_/g, " ") }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Text, { color: c.value >= 0.5 ? "green" : "red", children: [
-                      c.value.toFixed(1),
-                      " ",
-                      c.value >= 0.5 ? "\u2713" : "\u2717"
-                    ] })
-                  ] }, cIdx)) })
+                  (() => {
+                    const evaluatorRows = r.criteria.filter((c) => c.type);
+                    if (evaluatorRows.length === 0) return null;
+                    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { flexDirection: "column", marginTop: 1, children: evaluatorRows.map((c, cIdx) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Box_default, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Box_default, { width: 30, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Text, { dimColor: true, children: c.name.replace(/_/g, " ") }) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Text, { color: c.value >= 0.5 ? "green" : "red", children: [
+                        c.value.toFixed(1),
+                        " ",
+                        c.value >= 0.5 ? "\u2713" : "\u2717"
+                      ] })
+                    ] }, cIdx)) });
+                  })()
                 ]
               },
               idx

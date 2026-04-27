@@ -512,9 +512,12 @@ def _zero_judge_results(evaluators: List[dict], reasoning: str) -> dict:
     """Build judge_results entries that score every evaluator as a failure.
 
     Used when the LLM/agent returned no response — each response-type evaluator
-    that was supposed to grade the reply is recorded as match=False (binary)
-    or score=0 (rating) so the aggregated leaderboard reflects a 0 instead of
-    silently dropping the test case.
+    that was supposed to grade the reply is recorded as ``match=False`` for
+    binary evaluators, or as the evaluator's ``scale_min`` (the lowest valid
+    rating) for rating evaluators. Using ``scale_min`` instead of a hardcoded
+    0 keeps the value within the evaluator's declared range so downstream
+    mean/min aggregates aren't skewed below the scale (e.g. dragging a 1-5
+    rating's mean toward 0).
     """
     judge_results: dict = {}
     for ev in evaluators or []:
@@ -522,7 +525,14 @@ def _zero_judge_results(evaluators: List[dict], reasoning: str) -> dict:
         if not name:
             continue
         if is_rating(ev):
-            judge_results[name] = {"reasoning": reasoning, "score": 0}
+            try:
+                fallback_score = int(ev["scale_min"])
+            except (KeyError, TypeError, ValueError):
+                fallback_score = 0
+            judge_results[name] = {
+                "reasoning": reasoning,
+                "score": fallback_score,
+            }
         else:
             judge_results[name] = {"reasoning": reasoning, "match": False}
     return judge_results
