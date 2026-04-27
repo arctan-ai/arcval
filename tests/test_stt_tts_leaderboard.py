@@ -64,10 +64,6 @@ class TestSTTLeaderboard(unittest.TestCase):
             save_dir = base / "leaderboard"
             generate_stt_leaderboard(str(base), str(save_dir))
 
-            # Charts: one per metric
-            self.assertTrue((save_dir / "wer.png").exists())
-            self.assertTrue((save_dir / "semantic_match_score.png").exists())
-
             # Excel workbook exists with summary sheet
             xlsx = save_dir / "stt_leaderboard.xlsx"
             self.assertTrue(xlsx.exists())
@@ -77,8 +73,8 @@ class TestSTTLeaderboard(unittest.TestCase):
             self.assertEqual(set(summary["run"]), {"deepgram", "google"})
 
     def test_custom_criterion_metrics_surface_dynamically(self):
-        """A provider with custom criterion `semantic_match` should produce a chart
-        named semantic_match.png and a column in the summary."""
+        """A provider with custom criterion `semantic_match` should produce a
+        column in the summary."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _write_provider(base, "provider-a", {
@@ -89,9 +85,6 @@ class TestSTTLeaderboard(unittest.TestCase):
 
             save_dir = base / "leaderboard"
             generate_stt_leaderboard(str(base), str(save_dir))
-
-            self.assertTrue((save_dir / "semantic_match_score.png").exists())
-            self.assertTrue((save_dir / "completeness_score.png").exists())
 
             xlsx = save_dir / "stt_leaderboard.xlsx"
             summary = pd.read_excel(xlsx, sheet_name="summary")
@@ -148,9 +141,6 @@ class TestTTSLeaderboard(unittest.TestCase):
             save_dir = base / "leaderboard"
             generate_tts_leaderboard(str(base), str(save_dir))
 
-            self.assertTrue((save_dir / "pronunciation_score.png").exists())
-            self.assertTrue((save_dir / "ttfb.png").exists())
-
             xlsx = save_dir / "tts_leaderboard.xlsx"
             self.assertTrue(xlsx.exists())
             summary = pd.read_excel(xlsx, sheet_name="summary")
@@ -169,9 +159,11 @@ class TestTTSLeaderboard(unittest.TestCase):
             save_dir = base / "leaderboard"
             generate_tts_leaderboard(str(base), str(save_dir))
 
-            self.assertTrue((save_dir / "intelligibility_score.png").exists())
-            self.assertTrue((save_dir / "pronunciation_score.png").exists())
-            self.assertTrue((save_dir / "ttfb.png").exists())
+            xlsx = save_dir / "tts_leaderboard.xlsx"
+            summary = pd.read_excel(xlsx, sheet_name="summary")
+            self.assertIn("intelligibility_score", summary.columns)
+            self.assertIn("pronunciation_score", summary.columns)
+            self.assertIn("ttfb", summary.columns)
 
 
 if __name__ == "__main__":

@@ -23,14 +23,6 @@ def generate_leaderboard(output_dir: str, save_dir: str | None = None) -> str:
     Returns:
         Path to the leaderboard directory
     """
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        plt = None
-
     base_path = Path(output_dir).expanduser().resolve()
 
     if save_dir is None:
@@ -50,14 +42,11 @@ def generate_leaderboard(output_dir: str, save_dir: str | None = None) -> str:
         print(f"No provider folders found under {base_path}")
         return str(save_path)
 
-    # Collect all metrics from all providers to build dynamic metric list
-    all_metrics_dicts = []
     summary_rows = []
     run_results = {}
 
     for run_dir in run_dirs:
         metrics = _read_leaderboard_metrics(run_dir / "metrics.json")
-        all_metrics_dicts.append(metrics)
         results_df = _read_leaderboard_results(run_dir / "results.csv")
 
         row = {"run": run_dir.name, "count": len(results_df)}
@@ -66,18 +55,7 @@ def generate_leaderboard(output_dir: str, save_dir: str | None = None) -> str:
         summary_rows.append(row)
         run_results[run_dir.name] = results_df
 
-    # Build dynamic leaderboard metrics from all collected metric keys
-    all_metric_keys = set()
-    for m in all_metrics_dicts:
-        all_metric_keys.update(m.keys())
-    leaderboard_metrics = sorted(all_metric_keys)
-
     summary_df = pd.DataFrame(summary_rows)
-
-    if plt is not None:
-        _create_leaderboard_charts(summary_df, save_path, plt, leaderboard_metrics)
-    else:
-        print("matplotlib not available, skipping chart generation")
 
     workbook_path = save_path / "stt_leaderboard.xlsx"
     _write_leaderboard_workbook(summary_df, run_results, workbook_path)
@@ -99,7 +77,7 @@ def _read_leaderboard_metrics(metrics_path: Path) -> dict:
     if isinstance(data, dict) and "metric_name" not in data:
         for key, value in data.items():
             # Skip `_info` auxiliary keys (full per-criterion dicts) — scalar
-            # `_score` entries carry the display value for the chart/table.
+            # `_score` entries carry the display value for the table.
             if key.endswith("_info"):
                 continue
             if isinstance(value, dict) and "mean" in value:
@@ -130,61 +108,6 @@ def _read_leaderboard_results(results_path: Path) -> pd.DataFrame:
         print(f"[WARN] results.csv missing for {results_path.parent.name}")
         return pd.DataFrame()
     return pd.read_csv(results_path)
-
-
-def _create_leaderboard_charts(summary_df: pd.DataFrame, output_dir: Path, plt, leaderboard_metrics: list[str]) -> None:
-    """Create bar charts for each metric."""
-    import numpy as np
-
-    available_metrics = [m for m in leaderboard_metrics if m in summary_df.columns]
-    if not available_metrics:
-        print("No metrics available to plot.")
-        return
-
-    runs = summary_df["run"].tolist()
-    total_runs = len(runs)
-    if total_runs == 0:
-        print("No runs available to plot.")
-        return
-
-    for metric in available_metrics:
-        metric_values = summary_df[metric].tolist()
-        if all(pd.isna(v) for v in metric_values):
-            print(f"Skipping {metric} chart - no values available.")
-            continue
-
-        metric_values = [0 if pd.isna(v) else v for v in metric_values]
-        fig, ax = plt.subplots(figsize=(max(6, total_runs * 0.8), 5))
-        x = np.arange(total_runs)
-        bars = ax.bar(x, metric_values, width=0.6, color="steelblue")
-
-        for bar, value in zip(bars, metric_values):
-            height = bar.get_height()
-            label = f"{int(value)}" if value == int(value) else f"{value:.4f}"
-            ax.annotate(
-                label,
-                xy=(bar.get_x() + bar.get_width() / 2, height),
-                xytext=(0, 3),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=9,
-            )
-
-        metric_title = metric.replace("_", " ").title()
-        ax.set_title(f"{metric_title} by Provider")
-        ax.set_ylabel(metric_title)
-        ax.set_xlabel("Provider")
-        ax.set_xticks(x)
-        ax.set_xticklabels(runs, rotation=45, ha="right")
-        ax.set_ylim(bottom=0)
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
-        fig.tight_layout()
-
-        chart_path = output_dir / f"{metric}.png"
-        fig.savefig(chart_path, dpi=300)
-        plt.close(fig)
-        print(f"Saved {metric} chart at {chart_path}")
 
 
 def _write_leaderboard_workbook(

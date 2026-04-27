@@ -5,7 +5,7 @@ Covers:
 - Multi-model leaderboard with per-criterion columns
 - Backward compatibility: old-style metrics.json (no "criteria" key)
 - Union of criteria across models (missing criteria → NaN column value)
-- CSV + PNG outputs produced
+- CSV output produced
 
 Run with:
     python -m pytest tests/test_tests_leaderboard.py -v
@@ -94,19 +94,6 @@ class TestLeaderboardMultiCriteria(unittest.TestCase):
             self.assertTrue(
                 pd.isna(df.loc[df["model"] == "model-b", "accuracy"].iloc[0])
             )
-
-    def test_chart_png_created(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            _write_model(base, "model-a", {
-                "total": 2, "passed": 1,
-                "criteria": {
-                    "x": {"passed": 1, "total": 2, "pass_rate": 50.0},
-                },
-            })
-            save_dir = base / "leaderboard"
-            generate_leaderboard(str(base), str(save_dir))
-            self.assertTrue((save_dir / "llm_leaderboard.png").exists())
 
     def test_backward_compat_no_criteria_key(self):
         """Old-style metrics.json (just total/passed) should still produce a flat leaderboard."""
@@ -200,7 +187,7 @@ class TestLeaderboardMultiCriteria(unittest.TestCase):
             save_dir = base / "leaderboard"
             # Should print and return, not crash
             generate_leaderboard(str(base), str(save_dir))
-            # Leaderboard dir was created but CSV/PNG not written
+            # Leaderboard dir was created but CSV not written
             self.assertTrue(save_dir.exists())
             self.assertFalse((save_dir / "llm_leaderboard.csv").exists())
 
