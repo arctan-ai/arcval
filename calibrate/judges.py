@@ -183,9 +183,7 @@ def format_evaluation_result_lines(eval_row: dict) -> list[str]:
 
     if ev_type == "rating":
         scale_max = eval_row.get("scale_max")
-        score_str = (
-            f"{int(value)}/{scale_max}" if scale_max is not None else str(value)
-        )
+        score_str = f"{int(value)}/{scale_max}" if scale_max is not None else str(value)
         header = f"[{name}] {score_str}"
     else:
         passed = bool(value)
