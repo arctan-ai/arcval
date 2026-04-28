@@ -43,11 +43,13 @@
   ],
   "evaluators": [
     {
+      "id": "relevance-id",
       "name": "relevance",
       "system_prompt": "You are a highly accurate evaluator evaluating the response to a conversation.\n\nYou will be given a conversation between a user and a human agent along with the response of the human agent to the final user message.\n\nMark True if the assistant's response is about product availability or asks for more details about the laptop.",
       "judge_model": "openai/gpt-4.1"
     },
     {
+      "id": "tone-id",
       "name": "tone",
       "system_prompt": "You are a highly accurate evaluator evaluating the response to a conversation.\n\nYou will be given a conversation between a user and a human agent along with the response of the human agent to the final user message.\n\nRate the tone on a 1-5 scale: 1 = rude/robotic, 3 = neutral, 5 = warm and helpful.",
       "judge_model": "openai/gpt-4.1",
@@ -58,6 +60,7 @@
   ],
   "test_cases": [
     {
+      "id": "test-tool-call-1",
       "history": [
         {
           "role": "assistant",
@@ -82,6 +85,7 @@
       }
     },
     {
+      "id": "test-tool-call-2",
       "history": [
         {
           "role": "assistant",
@@ -106,6 +110,7 @@
       }
     },
     {
+      "id": "test-response-1",
       "history": [
         {
           "role": "assistant",
@@ -122,6 +127,7 @@
       }
     },
     {
+      "id": "test-response-2",
       "history": [
         {
           "role": "assistant",

@@ -93,6 +93,7 @@ You can also set the **`judge_model`** on an evaluator to use a different model.
 
 | Key             | Type    | Description                                                                                                           |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `id`            | string  | Optional unique id. Result rows echo it as `evaluator_id`; output `config.json` includes raw `evaluators` and an `evaluators_map`. |
 | `name`          | string  | A short name (used in results and leaderboard columns)                                                                |
 | `system_prompt` | string  | Full system prompt for this evaluator's LLM judge call. Include any agent-context the judge needs to score correctly. |
 | `judge_model`   | string  | OpenRouter model id for this evaluator (default: `openai/gpt-5.4-mini`)                                               |
@@ -104,11 +105,13 @@ You can also set the **`judge_model`** on an evaluator to use a different model.
 {
   "evaluators": [
     {
+      "id": "tool-usage-id",
       "name": "tool_usage",
       "system_prompt": "You are a highly accurate evaluator assessing a conversation between an agent (a customer support assistant for an online store) and a simulated user. You will be given the chat history of the conversation. Mark True if the agent called the `log_inquiry` tool with the correct `inquiry_type` and `order_id` whenever the customer provided one.",
       "judge_model": "openai/gpt-5.4-mini"
     },
     {
+      "id": "helpfulness-id",
       "name": "helpfulness",
       "system_prompt": "You are a highly accurate evaluator assessing a conversation between a customer support agent and a simulated user. You will be given the chat history of the conversation. Rate the agent's helpfulness on a 1-5 scale: 1 (unhelpful, confused), 3 (somewhat helpful), 5 (clearly resolved the customer's need).",
       "judge_model": "openai/gpt-5.4-mini",
@@ -117,10 +120,12 @@ You can also set the **`judge_model`** on an evaluator to use a different model.
       "scale_max": 5
     },
     {
+      "id": "goal-completion-id",
       "name": "goal_completion",
       "system_prompt": "You are a highly accurate evaluator.\n\nYou will be given a conversation between a user and an agent. Evaluate whether the agent successfully helped the user achieve their goal by the end of the conversation.\n\nEvaluation criteria:\n- The user's primary goal or request must be fully addressed.\n- Partial completion or unresolved follow-ups count as not completed.\n- If the user's goal is unclear, judge based on whether the agent made reasonable progress toward what was asked.\n\nMark True if the goal was fully achieved; False otherwise.\n\nAlways give your reasoning in english irrespective of the language of the conversation."
     },
     {
+      "id": "empathy-tone-id",
       "name": "empathy_tone",
       "system_prompt": "You are a highly accurate evaluator.\n\nYou will be given a conversation between a user and an agent. Rate how empathetic and appropriate the agent's tone was throughout the conversation.\n\nEvaluation criteria:\n- Did the agent acknowledge the user's emotions or concerns?\n- Was the tone polite, respectful, and contextually appropriate?\n- Did the agent avoid being dismissive, condescending, or curt?\n\nRespond with an integer score from 1 to 5, where:\n1 = rude, distant, dismissive, or hostile\n2 = cold or unhelpful\n3 = neutral — acceptable but not warm\n4 = friendly and considerate\n5 = consistently highly empathetic and emotionally aware\n\nAlways give your reasoning in english irrespective of the language of the conversation.",
       "type": "rating",
@@ -128,6 +133,7 @@ You can also set the **`judge_model`** on an evaluator to use a different model.
       "scale_max": 5
     },
     {
+      "id": "persona-adherence-id",
       "name": "persona_adherence",
       "system_prompt": "You are a highly accurate evaluator.\n\nYou will be given a conversation between a user and an agent that has been assigned a specific role or persona. Evaluate whether the agent stayed consistently in role throughout the conversation.\n\nEvaluation criteria:\n- The agent should not break character or reveal that it is an AI/LLM unless explicitly asked.\n- The agent should consistently behave in line with its assigned role, scope, and tone.\n- Acknowledging limitations within the role is fine; explicitly stepping outside the role is not.\n\nMark True if the agent stayed in role throughout; False otherwise.\n\nAlways give your reasoning in english irrespective of the language of the conversation."
     }
@@ -202,6 +208,7 @@ For voice simulations, specify the STT, LLM, and TTS providers:
       ],
       "evaluators": [
         {
+          "id": "tool-usage-id",
           "name": "tool_usage",
           "system_prompt": "You are a highly accurate evaluator assessing a conversation between an agent (a customer support assistant for an online store) and a simulated user. You will be given the chat history of the conversation. Mark True if the agent called the `log_inquiry` tool with the correct `inquiry_type` and `order_id` whenever the customer provided one.",
           "judge_model": "openai/gpt-5.4-mini"
@@ -249,6 +256,7 @@ For voice simulations, specify the STT, LLM, and TTS providers:
       ],
       "evaluators": [
         {
+          "id": "order-resolved-id",
           "name": "order_resolved",
           "system_prompt": "You are a highly accurate evaluator assessing a conversation between a customer support agent and a simulated user. You will be given the chat history of the conversation. Mark True if the agent looked up and clearly communicated the order status to the customer.",
           "judge_model": "openai/gpt-4.1"

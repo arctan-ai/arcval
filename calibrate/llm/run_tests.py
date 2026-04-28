@@ -42,9 +42,11 @@ from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
 from calibrate.llm.metrics import test_response_llm_judge, DEFAULT_JUDGE_MODEL
 from calibrate.judges import (
     DEFAULT_LLM_TEST_EVALUATOR,
+    attach_evaluator_id,
     is_rating,
     render_evaluator,
     require_unique_evaluator_names,
+    write_evaluator_config,
 )
 
 from calibrate.langfuse import observe, langfuse, langfuse_enabled
@@ -57,7 +59,7 @@ def _normalize_criteria_refs(criteria) -> list[dict]:
     """Coerce a test case's ``evaluation.criteria`` into a list of evaluator refs.
 
     Accepted shapes:
-    - ``str``                     → ``[{"name": <DEFAULT_LLM_TEST_EVALUATOR.name>, "arguments": {"criteria": <str>}}]``
+    - ``str`` → ``[{"name": <DEFAULT_LLM_TEST_EVALUATOR.name>, "arguments": {"criteria": <str>}}]``
     - ``list[{name, arguments}]`` → returned as-is
 
     Any other shape raises ``ValueError``.
@@ -116,6 +118,12 @@ def _build_evaluators_registry(config: dict) -> dict:
             )
         registry[ev["name"]] = ev
     return registry
+
+
+def _evaluators_for_config_output(config: dict) -> list[dict]:
+    """Return raw evaluators for the output config artifact."""
+    user_evaluators = config.get("evaluators") or []
+    return list(user_evaluators) if user_evaluators else [DEFAULT_LLM_TEST_EVALUATOR]
 
 
 def _resolve_evaluators_for_test_case(evaluation: dict, registry: dict) -> list[dict]:
@@ -519,9 +527,7 @@ def evaluate_tool_calls(output_tool_calls, evaluation_tool_calls):
     for output_tool_call, evaluation_tool_call in zip(
         output_tool_calls, evaluation_tool_calls
     ):
-        mismatch = _tool_call_pair_mismatch(
-            output_tool_call, evaluation_tool_call
-        )
+        mismatch = _tool_call_pair_mismatch(output_tool_call, evaluation_tool_call)
         if mismatch:
             return {"passed": False, "reasoning": mismatch}
 
@@ -557,9 +563,7 @@ def _per_slot_tool_passes(
             out.append(
                 (
                     name,
-                    _tool_call_pair_mismatch(
-                        output_tool_calls[i], evaluation_tool_call
-                    )
+                    _tool_call_pair_mismatch(output_tool_calls[i], evaluation_tool_call)
                     is None,
                 )
             )
@@ -586,12 +590,17 @@ def _no_response_judge_results(evaluators: List[dict], reasoning: str) -> dict:
                 fallback_score = int(ev["scale_min"])
             except (KeyError, TypeError, ValueError):
                 fallback_score = 0
-            judge_results[name] = {
-                "reasoning": reasoning,
-                "score": fallback_score,
-            }
+            judge_results[name] = attach_evaluator_id(
+                ev,
+                {
+                    "reasoning": reasoning,
+                    "score": fallback_score,
+                },
+            )
         else:
-            judge_results[name] = {"reasoning": reasoning, "match": False}
+            judge_results[name] = attach_evaluator_id(
+                ev, {"reasoning": reasoning, "match": False}
+            )
     return judge_results
 
 
@@ -842,6 +851,9 @@ def _aggregate_criteria(results: List[dict], evaluators_registry: dict) -> dict:
             "total": c["total"],
             "pass_rate": (c["passed"] / c["total"]) * 100 if c["total"] else 0.0,
         }
+        ev = evaluators_registry.get(name)
+        if ev and "id" in ev:
+            aggregated[name]["evaluator_id"] = ev["id"]
     for name, scores in rating_scores.items():
         lo, hi = rating_scale[name]
         aggregated[name] = {
@@ -853,6 +865,9 @@ def _aggregate_criteria(results: List[dict], evaluators_registry: dict) -> dict:
             "scale_min": lo,
             "scale_max": hi,
         }
+        ev = evaluators_registry.get(name)
+        if ev and "id" in ev:
+            aggregated[name]["evaluator_id"] = ev["id"]
     return aggregated
 
 
@@ -940,6 +955,7 @@ async def run_model_tests(
     unique_id = str(uuid.uuid4())
 
     evaluators_registry = _build_evaluators_registry(config)
+    write_evaluator_config(output_dir, _evaluators_for_config_output(config))
 
     for test_case_index, test_case in enumerate(config["test_cases"]):
         # Preprocess conversation history to add tool responses for non-webhook tools
@@ -982,6 +998,8 @@ async def run_model_tests(
                 print_log_save_path,
             )
 
+        if "id" in test_case:
+            result["test_case_id"] = test_case["id"]
         result["test_case"] = test_case
         results.append(result)
 

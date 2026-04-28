@@ -5,6 +5,7 @@
   },
   "test_cases": [
     {
+      "id": "test-tool-call-1",
       "history": [
         {
           "role": "assistant",
@@ -28,6 +29,7 @@
       }
     },
     {
+      "id": "test-tool-call-2",
       "history": [
         {
           "role": "assistant",
@@ -52,6 +54,7 @@
       }
     },
     {
+      "id": "test-response-1",
       "history": [
         {
           "role": "assistant",
@@ -68,6 +71,7 @@
       }
     },
     {
+      "id": "test-response-2",
       "history": [
         {
           "role": "assistant",

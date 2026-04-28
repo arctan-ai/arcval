@@ -49,9 +49,11 @@ from pipecat.services.openrouter.llm import OpenRouterLLMService
 from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
 from calibrate.llm.metrics import evaluate_simuation, DEFAULT_SIMULATION_JUDGE_MODEL
 from calibrate.judges import (
+    attach_evaluator_id,
     evaluator_result_value,
     format_evaluation_result_lines,
     is_rating,
+    write_evaluator_config,
 )
 
 
@@ -68,6 +70,7 @@ def _build_evaluation_result(evaluator: dict, judge_row: dict) -> dict:
         "value": evaluator_result_value(evaluator, judge_row),
         "reasoning": judge_row["reasoning"],
     }
+    result = attach_evaluator_id(evaluator, result)
     if is_rating(evaluator):
         result["scale_min"] = int(evaluator["scale_min"])
         result["scale_max"] = int(evaluator["scale_max"])
@@ -899,6 +902,7 @@ async def main():
     output_dir = args.output_dir
 
     os.makedirs(output_dir, exist_ok=True)
+    write_evaluator_config(output_dir, config["evaluators"])
 
     # Create semaphore to limit parallel executions
     semaphore = asyncio.Semaphore(args.parallel)
@@ -952,6 +956,7 @@ async def main():
 
     # Track criterion types and scale bounds per metric name
     criterion_types: dict = {}
+    criterion_ids: dict = {}
     criterion_scales: dict = {}
     for result in results:
         if isinstance(result, Exception):
@@ -961,6 +966,10 @@ async def main():
             criterion_types.setdefault(
                 metric_dict["name"], metric_dict.get("type", "binary")
             )
+            if "evaluator_id" in metric_dict:
+                criterion_ids.setdefault(
+                    metric_dict["name"], metric_dict["evaluator_id"]
+                )
             if "scale_min" in metric_dict and "scale_max" in metric_dict:
                 criterion_scales.setdefault(
                     metric_dict["name"],
@@ -978,6 +987,8 @@ async def main():
         }
         if metric_name in criterion_scales:
             entry["scale_min"], entry["scale_max"] = criterion_scales[metric_name]
+        if metric_name in criterion_ids:
+            entry["evaluator_id"] = criterion_ids[metric_name]
         metrics_summary[metric_name] = entry
 
     df = pd.DataFrame(all_simulation_metrics)

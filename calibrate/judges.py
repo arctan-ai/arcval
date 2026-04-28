@@ -4,6 +4,7 @@ Unified LLM Judge module.
 An *evaluator* is the unit of grading. It is a dict with the shape::
 
     {
+        "id": str,                    # optional unique id
         "name": str,
         "system_prompt": str,         # may contain {{var}} placeholders
         "judge_model": str,           # OpenRouter model id
@@ -23,7 +24,8 @@ Each evaluator becomes one independent LLM call: its ``system_prompt`` is
 sent verbatim as the system message and the per-row context is sent as
 the user message. If multiple evaluators are supplied they are issued
 concurrently; results are stitched back into a single dict keyed by
-``evaluator["name"]``.
+``evaluator["name"]``. If an evaluator includes an optional ``id``, that value
+is echoed as ``evaluator_id`` in the individual result payload.
 
 Default evaluators are exposed for callers that want to preserve the
 pre-evaluators-API behavior:
@@ -37,6 +39,7 @@ Simulation has no implicit default — callers must supply evaluators.
 
 import asyncio
 import base64
+import json
 import os
 import re
 from typing import Literal, Optional
@@ -159,6 +162,37 @@ def evaluator_result_value(evaluator: dict, result: dict) -> float:
     return float(int(bool(result["match"])))
 
 
+def attach_evaluator_id(evaluator: dict, result: dict) -> dict:
+    """Echo an optional unique id into a result payload."""
+    if "id" not in evaluator or not isinstance(result, dict):
+        return result
+    result = dict(result)
+    result["evaluator_id"] = evaluator["id"]
+    return result
+
+
+def evaluator_config_payload(evaluators: list[dict], extra: Optional[dict] = None) -> dict:
+    """Build the evaluator config artifact written alongside run outputs."""
+    payload = dict(extra or {})
+    raw_evaluators = [dict(ev) for ev in evaluators or [] if isinstance(ev, dict)]
+    payload["evaluators"] = raw_evaluators
+    payload["evaluators_map"] = {
+        str(ev["id"]): ev["name"]
+        for ev in raw_evaluators
+        if ev.get("id") is not None and ev.get("name")
+    }
+    return payload
+
+
+def write_evaluator_config(
+    output_dir: str, evaluators: list[dict], extra: Optional[dict] = None
+) -> None:
+    """Write raw evaluators and id-to-name mapping to config.json."""
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "config.json"), "w") as f:
+        json.dump(evaluator_config_payload(evaluators, extra=extra), f, indent=4)
+
+
 # Back-compat alias (older imports). Kept to avoid breaking SDK consumers.
 criterion_result_value = evaluator_result_value
 
@@ -168,7 +202,7 @@ def format_evaluation_result_lines(eval_row: dict) -> list[str]:
 
     ``eval_row`` matches the per-evaluator dict written into
     ``evaluation_results.csv`` (and the simulation ``evaluation_results``
-    list): ``{"name", "type", "value", "reasoning", scale_min?, scale_max?}``.
+    list): ``{"name", "type", "value", "reasoning", evaluator_id?, scale_min?, scale_max?}``.
 
     Returns a header line plus an indented "Reason:" line when reasoning is
     present, so callers can ``log_and_print`` each line individually:
@@ -464,14 +498,18 @@ async def text_judge(
     Returns:
         Dict keyed by ``evaluator["name"]``. Binary evaluators give
         ``{"reasoning": str, "match": bool}``; rating evaluators give
-        ``{"reasoning": str, "score": int}``.
+        ``{"reasoning": str, "score": int}``. If the evaluator has ``id``,
+        the payload also includes ``evaluator_id``.
     """
     if not evaluators:
         return {}
 
     coros = [_judge_one_text(ev, user_prompt, fallback_model) for ev in evaluators]
     results = await asyncio.gather(*coros)
-    return {ev["name"]: r for ev, r in zip(evaluators, results)}
+    return {
+        ev["name"]: attach_evaluator_id(ev, r)
+        for ev, r in zip(evaluators, results)
+    }
 
 
 @observe(name="audio_judge", capture_input=False, capture_output=False)
@@ -494,7 +532,8 @@ async def audio_judge(
             should be an audio-capable model.
 
     Returns:
-        Dict keyed by ``evaluator["name"]``.
+        Dict keyed by ``evaluator["name"]``. If the evaluator has ``id``, the
+        payload also includes ``evaluator_id``.
     """
     if not evaluators:
         return {}
@@ -507,7 +546,10 @@ async def audio_judge(
         for ev in evaluators
     ]
     results = await asyncio.gather(*coros)
-    return {ev["name"]: r for ev, r in zip(evaluators, results)}
+    return {
+        ev["name"]: attach_evaluator_id(ev, r)
+        for ev, r in zip(evaluators, results)
+    }
 
 
 # ── Conversation-transcript helper ──────────────────────────────────────────

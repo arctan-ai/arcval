@@ -68,11 +68,13 @@ The config file supports:
 {
   "evaluators": [
     {
+      "id": "semantic-match-id",
       "name": "semantic_match",
       "system_prompt": "You are a highly accurate evaluator. You will be given a source text and a transcription. Mark True if the values represented by both strings match semantically.",
       "judge_model": "openai/gpt-5.4-mini"
     },
     {
+      "id": "completeness-id",
       "name": "completeness",
       "system_prompt": "You are a highly accurate evaluator. You will be given a source text and a transcription. Mark True if all information from the source text is present in the transcription.",
       "judge_model": "openai/gpt-5.4-mini"
@@ -84,6 +86,7 @@ The config file supports:
 | Key                          | Type   | Description                                                                                                                                       |
 | ---------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `evaluators`                 | array  | List of evaluators. Each one becomes its own LLM call per row.                                                                                    |
+| `evaluators[].id`            | string | Optional unique id. Output `config.json` includes the raw `evaluators` list and an `evaluators_map` from id to name.                              |
 | `evaluators[].name`          | string | Unique evaluator name. Becomes the column name in the leaderboard.                                                                                |
 | `evaluators[].system_prompt` | string | Full system prompt used for this evaluator's LLM judge call.                                                                                      |
 | `evaluators[].judge_model`   | string | OpenRouter model id for this evaluator (default: `openai/gpt-5.4-mini`). Use any model in the [OpenRouter catalog](https://openrouter.ai/models). |

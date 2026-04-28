@@ -54,11 +54,13 @@ The config file supports:
 {
   "evaluators": [
     {
+      "id": "intelligibility-id",
       "name": "intelligibility",
       "system_prompt": "You are a highly accurate evaluator. You will be given an audio sample and the reference text it is supposed to speak. Mark True if the spoken text is clearly understandable from the audio.",
       "judge_model": "openai/gpt-audio"
     },
     {
+      "id": "pronunciation-id",
       "name": "pronunciation",
       "system_prompt": "You are a highly accurate evaluator. You will be given an audio sample and the reference text it is supposed to speak. Mark True only if all words are pronounced correctly with natural-sounding speech.",
       "judge_model": "openai/gpt-audio"
@@ -70,6 +72,7 @@ The config file supports:
 | Key                          | Type   | Description                                                                                                                                                                                                                                                                                                                                                                         |
 | ---------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `evaluators`                 | array  | List of evaluators. Each one becomes its own audio LLM call per row.                                                                                                                                                                                                                                                                                                                |
+| `evaluators[].id`            | string | Optional unique id. Output `config.json` includes the raw `evaluators` list and an `evaluators_map` from id to name.                                                                                                                                                                                                                                                                  |
 | `evaluators[].name`          | string | Unique evaluator name. Becomes the column name in the leaderboard.                                                                                                                                                                                                                                                                                                                  |
 | `evaluators[].system_prompt` | string | Full system prompt used for this evaluator's audio LLM judge call.                                                                                                                                                                                                                                                                                                                  |
 | `evaluators[].judge_model`   | string | OpenRouter model id for this evaluator (default: `openai/gpt-audio`). Must be an audio-capable model in the [OpenRouter catalog](https://openrouter.ai/models) — for example OpenAI’s audio models or Google’s Gemini audio-capable entries; the [sample config](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/tts/config.json) uses `google/gemini-2.5-flash`. |

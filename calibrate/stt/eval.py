@@ -37,6 +37,7 @@ from calibrate.judges import (
     is_rating,
     DEFAULT_STT_EVALUATOR,
     require_unique_evaluator_names,
+    write_evaluator_config,
 )
 from calibrate.langfuse import (
     create_langfuse_audio_media,
@@ -856,6 +857,7 @@ async def run_single_provider_eval(
 
         _evaluators = judge_evaluators if judge_evaluators else [DEFAULT_STT_EVALUATOR]
         require_unique_evaluator_names(_evaluators)
+        write_evaluator_config(output_dir, _evaluators)
         llm_results = await get_llm_judge_score(
             all_gt_transcripts,
             all_pred_transcripts,

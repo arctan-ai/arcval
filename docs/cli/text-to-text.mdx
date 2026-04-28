@@ -123,6 +123,7 @@ An array of test cases to evaluate your agent on. Each test case has:
 
 | Key          | Type   | Description                                                                       |
 | ------------ | ------ | --------------------------------------------------------------------------------- |
+| `id`         | string | Optional unique test-case id. When provided, results include `test_case_id`.       |
 | `history`    | array  | Conversation history as context for the agent to generate the next output         |
 | `evaluation` | object | The criteria for evaluating the agent's output — either a tool call or a response |
 
@@ -131,6 +132,7 @@ An array of test cases to evaluate your agent on. Each test case has:
 ```jsonc
 {
   // tool_call test
+  "id": "test-id-1",
   "history": [
     { "role": "assistant", "content": "Hello! How can I help you today?" },
     {
@@ -162,6 +164,7 @@ An array of test cases to evaluate your agent on. Each test case has:
 ```jsonc
 {
   // response test — implicit default correctness evaluator (string criteria)
+  "id": "test-id-1",
   "history": [
     { "role": "assistant", "content": "Hello! How can I help you today?" },
     { "role": "user", "content": "What's the weather like?" },
@@ -191,11 +194,13 @@ Define one or more evaluators at the top level and reference them by name from e
 {
   "evaluators": [
     {
+      "id": "accuracy-id",
       "name": "accuracy",
       "system_prompt": "You are a highly accurate evaluator. You will be given a conversation and the agent's final response. Mark True if the response is factually correct and relevant.",
       "judge_model": "openai/gpt-4.1"
     },
     {
+      "id": "tone-id",
       "name": "tone",
       "system_prompt": "You are a highly accurate evaluator. You will be given a conversation and the agent's final response. Rate the tone on a 1-5 scale: 1 = rude/robotic, 3 = neutral, 5 = warm and helpful.",
       "judge_model": "openai/gpt-4.1",
@@ -207,6 +212,7 @@ Define one or more evaluators at the top level and reference them by name from e
   "test_cases": [
     {
       // response — custom named evaluators (accuracy + tone)
+      "id": "test-id-1",
       "history": [...],
       "evaluation": {
         "type": "response",
@@ -254,6 +260,7 @@ The simplest setup needs no top-level `evaluators`. Pass `criteria` as a string 
 | Key                          | Type    | Description                                                                                                                        |
 | ---------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `evaluators`                 | array   | Top-level list of evaluators. Each one becomes its own LLM call per test case.                                                     |
+| `evaluators[].id`            | string  | Optional unique id. Results echo it as `evaluator_id`; output `config.json` includes raw `evaluators` and an `evaluators_map`.       |
 | `evaluators[].name`          | string  | Unique evaluator name. Test cases reference it via `evaluation.criteria[].name`.                                                   |
 | `evaluators[].system_prompt` | string  | Full system prompt for this evaluator. Supports `{{variable}}` placeholders that are substituted from the test case's `arguments`. |
 | `evaluators[].judge_model`   | string  | OpenRouter model id for this evaluator (default: `openai/gpt-5.4-mini`).                                                           |
@@ -269,6 +276,7 @@ A test case can pass `arguments` to an evaluator. Each `{{variable}}` placeholde
 {
   "evaluators": [
     {
+      "id": "correctness-id",
       "name": "correctness",
       "system_prompt": "You are a highly accurate evaluator. Evaluate whether the agent's response satisfies: {{criteria}}",
       "judge_model": "openai/gpt-4.1"
@@ -353,11 +361,13 @@ If you want thresholds different from “top-of-scale” (for example “tone at
       ],
       "evaluators": [
         {
+          "id": "relevance-id",
           "name": "relevance",
           "system_prompt": "You are a highly accurate evaluator evaluating the response to a conversation.\n\nYou will be given a conversation between a user and a human agent along with the response of the human agent to the final user message.\n\nMark True if the assistant's response is about product availability or asks for more details about the laptop.",
           "judge_model": "openai/gpt-4.1"
         },
         {
+          "id": "tone-id",
           "name": "tone",
           "system_prompt": "You are a highly accurate evaluator evaluating the response to a conversation.\n\nYou will be given a conversation between a user and a human agent along with the response of the human agent to the final user message.\n\nRate the tone on a 1-5 scale: 1 = rude/robotic, 3 = neutral, 5 = warm and helpful.",
           "judge_model": "openai/gpt-4.1",
@@ -369,6 +379,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
       "test_cases": [
         {
           // tool_call — expect check_order (webhook)
+          "id": "test-tool-call-1",
           "history": [
             {
               "role": "assistant",
@@ -394,6 +405,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
         },
         {
           // tool_call — expect log_interaction (client tool)
+          "id": "test-tool-call-2",
           "history": [
             {
               "role": "assistant",
@@ -419,6 +431,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
         },
         {
           // response — implicit default correctness evaluator (string criteria); independent of named evaluators below
+          "id": "test-response-1",
           "history": [
             {
               "role": "assistant",
@@ -436,6 +449,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
         },
         {
           // response — custom named evaluators (relevance + tone from top-level evaluators)
+          "id": "test-response-2",
           "history": [
             {
               "role": "assistant",
@@ -472,6 +486,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
       "test_cases": [
         {
           // tool_call — expect check_order
+          "id": "test-tool-call-1",
           "history": [
             {
               "role": "assistant",
@@ -496,6 +511,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
         },
         {
           // tool_call — expect log_interaction
+          "id": "test-tool-call-2",
           "history": [
             {
               "role": "assistant",
@@ -521,6 +537,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
         },
         {
           // response — implicit default correctness evaluator (string criteria)
+          "id": "test-response-1",
           "history": [
             {
               "role": "assistant",
@@ -538,6 +555,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
         },
         {
           // response — implicit default correctness evaluator (string criteria)
+          "id": "test-response-2",
           "history": [
             {
               "role": "assistant",

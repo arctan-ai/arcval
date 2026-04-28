@@ -89,8 +89,10 @@ class _Tests:
             run_test as _run_test,
             run_test_external as _run_test_external,
             _build_evaluators_registry,
+            _evaluators_for_config_output,
             _resolve_evaluators_for_test_case,
         )
+        from calibrate.judges import write_evaluator_config
         from calibrate.utils import configure_print_logger, log_and_print
 
         # Create output directory
@@ -130,7 +132,11 @@ class _Tests:
         # Pass model name to agent for benchmark routing; None for single runs.
         agent_model_hint: Optional[str] = model if (agent is not None and model) else None
 
-        evaluators_registry = _build_evaluators_registry({"evaluators": evaluators or []})
+        evaluator_config = {"evaluators": evaluators or []}
+        evaluators_registry = _build_evaluators_registry(evaluator_config)
+        write_evaluator_config(
+            output_dir, _evaluators_for_config_output(evaluator_config)
+        )
 
         for test_case_index, test_case in enumerate(test_cases):
             evaluation = test_case["evaluation"]
@@ -166,6 +172,8 @@ class _Tests:
             if "reasoning" in result["metrics"]:
                 log_and_print(result["metrics"]["reasoning"])
 
+            if "id" in test_case:
+                result["test_case_id"] = test_case["id"]
             result["test_case"] = test_case
             results.append(result)
 
@@ -527,7 +535,7 @@ class _Simulations:
                 a model-specific subfolder. Used by the single-model path in run()
                 for backward compatibility.
         """
-        from calibrate.judges import require_simulation_evaluators
+        from calibrate.judges import require_simulation_evaluators, write_evaluator_config
         from calibrate.llm.run_simulation import run_single_simulation_task
 
         require_simulation_evaluators(evaluators or [])
@@ -541,6 +549,7 @@ class _Simulations:
             final_output_dir = os.path.join(output_dir, save_folder_name)
 
         os.makedirs(final_output_dir, exist_ok=True)
+        write_evaluator_config(output_dir, evaluators or [])
 
         # Build config dict for run_single_simulation_task
         config = {
@@ -589,6 +598,7 @@ class _Simulations:
         # Collect metrics
         metrics_by_criterion = defaultdict(list)
         criterion_types: dict = {}  # name -> "binary" | "rating"
+        criterion_ids: dict = {}
         criterion_scales: dict = {}  # name -> (scale_min, scale_max) for ratings
         all_simulation_metrics = []
 
@@ -608,6 +618,10 @@ class _Simulations:
                     criterion_types.setdefault(
                         eval_result["name"], eval_result.get("type", "binary")
                     )
+                    if "evaluator_id" in eval_result:
+                        criterion_ids.setdefault(
+                            eval_result["name"], eval_result["evaluator_id"]
+                        )
                     if "scale_min" in eval_result and "scale_max" in eval_result:
                         criterion_scales.setdefault(
                             eval_result["name"],
@@ -630,6 +644,8 @@ class _Simulations:
                 entry["scale_min"], entry["scale_max"] = criterion_scales[
                     criterion_name
                 ]
+            if criterion_name in criterion_ids:
+                entry["evaluator_id"] = criterion_ids[criterion_name]
             metrics_summary[criterion_name] = entry
 
         # Save results

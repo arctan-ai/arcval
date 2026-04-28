@@ -154,6 +154,9 @@ An LLM Judge evaluates whether the agent's response satisfies your criteria, ret
 
 ```python
 {
+    # Optional unique id echoed in results as test_case_id
+    "id": "test-id-1",
+
     # The conversation so far (required)
     "history": [
         {"role": "assistant", "content": "Hello! What is your name?"},
@@ -221,13 +224,17 @@ Detailed results for each test case:
       ]
     },
     "metrics": {"passed": true},
+    "test_case_id": "test-id-1",
     "test_case": {
+      "id": "test-id-1",
       "history": [...],
       "evaluation": {...}
     }
   }
 ]
 ```
+
+For response tests with custom evaluators, each one can include an optional unique `id`. When provided, judge results echo it as `evaluator_id` so consumers do not need to infer identity from order or display name.
 
 ### metrics.json
 

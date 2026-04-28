@@ -120,13 +120,14 @@ class _Simulation:
             ...     llm=LLMConfig(provider="openrouter", model="openai/gpt-4.1"),
             ... ))
         """
-        from calibrate.judges import require_simulation_evaluators
+        from calibrate.judges import require_simulation_evaluators, write_evaluator_config
         from calibrate.agent.run_simulation import run_single_simulation_task
         import gc
 
         require_simulation_evaluators(evaluators)
 
         os.makedirs(output_dir, exist_ok=True)
+        write_evaluator_config(output_dir, evaluators)
 
         # Build config dict
         config = {
@@ -221,6 +222,7 @@ class _Simulation:
 
         # Track criterion types and scale bounds for metrics.json enrichment
         criterion_types: dict = {}
+        criterion_ids: dict = {}
         criterion_scales: dict = {}
         for result in results:
             if isinstance(result, Exception) or result is None:
@@ -230,6 +232,10 @@ class _Simulation:
                 criterion_types.setdefault(
                     eval_result["name"], eval_result.get("type", "binary")
                 )
+                if "evaluator_id" in eval_result:
+                    criterion_ids.setdefault(
+                        eval_result["name"], eval_result["evaluator_id"]
+                    )
                 if "scale_min" in eval_result and "scale_max" in eval_result:
                     criterion_scales.setdefault(
                         eval_result["name"],
@@ -252,6 +258,8 @@ class _Simulation:
                 entry["scale_min"], entry["scale_max"] = criterion_scales[
                     criterion_name
                 ]
+            if criterion_name in criterion_ids:
+                entry["evaluator_id"] = criterion_ids[criterion_name]
             metrics_summary[criterion_name] = entry
 
         if stt_llm_judge_scores:
@@ -315,10 +323,11 @@ class _Simulation:
             ...     output_dir="./out"
             ... ))
         """
-        from calibrate.judges import require_simulation_evaluators
+        from calibrate.judges import require_simulation_evaluators, write_evaluator_config
         from calibrate.agent.run_simulation import run_simulation as _run_simulation
 
         require_simulation_evaluators(evaluators)
+        write_evaluator_config(output_dir, evaluators)
 
         return await _run_simulation(
             system_prompt=system_prompt,

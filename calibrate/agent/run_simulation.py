@@ -35,10 +35,12 @@ from calibrate.llm.metrics import evaluate_simuation, DEFAULT_SIMULATION_JUDGE_M
 from calibrate.stt.metrics import get_llm_judge_score as stt_llm_judge_score, DEFAULT_STT_JUDGE_MODEL
 from calibrate.judges import (
     DEFAULT_STT_EVALUATOR,
+    attach_evaluator_id,
     evaluator_result_value,
     format_evaluation_result_lines,
     is_rating,
     require_simulation_evaluators,
+    write_evaluator_config,
 )
 import pandas as pd
 
@@ -1191,6 +1193,7 @@ async def _run_simulation_inner(
             "value": evaluator_result_value(evaluator, judge_row),
             "reasoning": judge_row["reasoning"],
         }
+        row = attach_evaluator_id(evaluator, row)
         if is_rating(evaluator):
             row["scale_min"] = int(evaluator["scale_min"])
             row["scale_max"] = int(evaluator["scale_max"])
@@ -1280,6 +1283,7 @@ async def _run_simulation_inner(
     for eval_result in evaluation_results:
         evaluation_results_rows.append(
             {
+                "evaluator_id": eval_result.get("evaluator_id"),
                 "name": eval_result["name"],
                 "type": eval_result.get("type", "binary"),
                 "value": eval_result["value"],
@@ -1674,6 +1678,7 @@ async def main():
         sys.exit(1)
 
     os.makedirs(args.output_dir, exist_ok=True)
+    write_evaluator_config(args.output_dir, config["evaluators"])
 
     # Mapping from interruption_sensitivity labels to probabilities
     interrupt_sensitivity_map = {
@@ -1738,6 +1743,7 @@ async def main():
 
     # Track criterion types and scale bounds
     criterion_types: dict = {}
+    criterion_ids: dict = {}
     criterion_scales: dict = {}
     for result in results:
         if isinstance(result, Exception) or result is None:
@@ -1747,6 +1753,10 @@ async def main():
             criterion_types.setdefault(
                 eval_result["name"], eval_result.get("type", "binary")
             )
+            if "evaluator_id" in eval_result:
+                criterion_ids.setdefault(
+                    eval_result["name"], eval_result["evaluator_id"]
+                )
             if "scale_min" in eval_result and "scale_max" in eval_result:
                 criterion_scales.setdefault(
                     eval_result["name"],
@@ -1766,6 +1776,8 @@ async def main():
         }
         if criterion_name in criterion_scales:
             entry["scale_min"], entry["scale_max"] = criterion_scales[criterion_name]
+        if criterion_name in criterion_ids:
+            entry["evaluator_id"] = criterion_ids[criterion_name]
         metrics_summary[criterion_name] = entry
 
     # Aggregate STT LLM judge scores
