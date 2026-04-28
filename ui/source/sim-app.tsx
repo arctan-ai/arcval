@@ -13,6 +13,70 @@ import {
 import { getCredential, saveCredential } from "./credentials.js";
 import { type CalibrateCmd, findCalibrateBin, stripAnsi } from "./shared.js";
 
+// ─── CSV parser ──────────────────────────────────────────────
+// Minimal RFC-4180 row parser: respects double-quoted fields, treats ``""``
+// inside a quoted field as an escaped quote, and allows newlines inside
+// quoted fields (multi-line ``reasoning`` cells produced by the simulation
+// CSV writers). Returns the file as a list of rows; each row is a list of
+// raw field strings.
+function parseCsvRows(content: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < content.length) {
+    const c = content[i]!;
+    if (inQuotes) {
+      if (c === '"') {
+        if (content[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (c === ",") {
+      row.push(field);
+      field = "";
+      i++;
+      continue;
+    }
+    if (c === "\n" || c === "\r") {
+      if (c === "\r" && content[i + 1] === "\n") i++;
+      row.push(field);
+      field = "";
+      // Skip blank lines so a trailing newline doesn't add an empty row.
+      if (row.length > 1 || (row.length === 1 && row[0] !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      i++;
+      continue;
+    }
+    field += c;
+    i++;
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    if (row.length > 1 || (row.length === 1 && row[0] !== "")) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
 // ─── Types ───────────────────────────────────────────────────
 type SimStep =
   | "init"
@@ -88,7 +152,16 @@ interface EvalResult {
   simulation: string;
   persona_idx: number;
   scenario_idx: number;
-  criteria: { name: string; value: number; reasoning: string }[];
+  // ``type`` is the evaluator type ("binary" / "rating") for actual judge
+  // evaluators and an empty string for the latency / system metrics rows
+  // (``llm/ttft``, ``stt_llm_judge_score`` etc.) that share the same CSV.
+  // The leaderboard cards filter on this to show only evaluators.
+  criteria: {
+    name: string;
+    type: string;
+    value: number;
+    reasoning: string;
+  }[];
   transcript: TranscriptMessage[];
   personaInfo?: PersonaInfo;
   scenarioInfo?: ScenarioInfo;
@@ -322,7 +395,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
     };
 
     if (simType === "text") {
-      // Always need OPENAI_API_KEY for LLM judge/evaluation
+      // Always need OPENAI_API_KEY for evaluators
       addIfMissing("OPENAI_API_KEY");
       // Need OPENROUTER_API_KEY if using OpenRouter
       if (provider === "openrouter" && !isAgentConnection) {
@@ -785,42 +858,35 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
 
         try {
           const content = fs.readFileSync(evalPath, "utf-8");
-          const lines = content.trim().split("\n");
-          if (lines.length < 2) continue;
+          // The CSV may have multi-line quoted reasoning fields, so we cannot
+          // split on \n. Use a small state-machine parser that respects "" as
+          // an escaped quote inside a quoted field.
+          const rows = parseCsvRows(content);
+          if (rows.length < 2) continue;
 
-          // Parse CSV (name,value,reasoning) - handle quoted fields
-          const criteria: { name: string; value: number; reasoning: string }[] =
-            [];
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i]!;
-            // Handle CSV with potential commas and quotes in reasoning
-            const firstComma = line.indexOf(",");
-            if (firstComma === -1) continue;
+          // Header is currently ``name,type,value,reasoning`` (the older
+          // 3-column ``name,value,reasoning`` shape is still supported as a
+          // fallback for legacy outputs).
+          const header = rows[0]!.map((h) => h.trim().toLowerCase());
+          const nameIdx = header.indexOf("name");
+          const typeIdx = header.indexOf("type");
+          const valueIdx = header.indexOf("value");
+          const reasoningIdx = header.indexOf("reasoning");
+          if (nameIdx === -1 || valueIdx === -1) continue;
 
-            const name = line.slice(0, firstComma).trim();
-            const rest = line.slice(firstComma + 1);
-
-            // Find value (number before next comma or quote)
-            let valueStr = "";
-            let reasoningStart = 0;
-            for (let j = 0; j < rest.length; j++) {
-              if (rest[j] === "," || rest[j] === '"') {
-                valueStr = rest.slice(0, j).trim();
-                reasoningStart = rest[j] === "," ? j + 1 : j;
-                break;
-              }
-            }
-
-            let reasoning = rest.slice(reasoningStart).trim();
-            // Remove surrounding quotes if present
-            if (reasoning.startsWith('"') && reasoning.endsWith('"')) {
-              reasoning = reasoning.slice(1, -1).replace(/""/g, '"');
-            }
-
+          const criteria: EvalResult["criteria"] = [];
+          for (let i = 1; i < rows.length; i++) {
+            const cols = rows[i]!;
+            const name = (cols[nameIdx] ?? "").trim();
+            const evalType =
+              typeIdx !== -1 ? (cols[typeIdx] ?? "").trim() : "";
+            const valueStr = (cols[valueIdx] ?? "").trim();
+            const reasoning =
+              reasoningIdx !== -1 ? (cols[reasoningIdx] ?? "").trim() : "";
+            if (!name) continue;
             const value = parseFloat(valueStr);
-
             if (!isNaN(value)) {
-              criteria.push({ name, value, reasoning });
+              criteria.push({ name, type: evalType, value, reasoning });
             }
           }
 
@@ -914,7 +980,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
           {header}
           <Text dimColor>
             Path to a JSON config file containing system prompt, tools,
-            personas, scenarios, and evaluation criteria.
+            personas, scenarios, and evaluators.
           </Text>
           {initError ? (
             <Box marginTop={1}>
@@ -1528,41 +1594,88 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
               )}
             </Box>
 
-            {/* Evaluation Metrics Section */}
+            {/* Evaluation Metrics Section.
+                Evaluators (binary/rating, type non-empty) keep the green/red
+                pass/fail boxes with reasoning. Everything else from the same
+                CSV (latency rows like ``llm/ttft``, ``stt_llm_judge_score``)
+                renders below as a single uncoloured table — no pass/fail
+                semantics are applied since these are not judged outcomes. */}
             <Box marginBottom={1}>
               <Text bold>Evaluation</Text>
             </Box>
-            {criteria.length === 0 ? (
-              <Text color="yellow">No evaluation results found.</Text>
-            ) : (
-              criteria.map((c, idx) => (
-                <Box
-                  key={idx}
-                  flexDirection="column"
-                  marginBottom={1}
-                  borderStyle="single"
-                  borderColor={c.value >= 0.5 ? "green" : "red"}
-                  paddingX={1}
-                >
-                  <Box>
-                    <Text bold>{c.name.replace(/_/g, " ")}</Text>
-                    <Text> </Text>
-                    {c.value >= 0.5 ? (
-                      <Text color="green" bold>
-                        {c.value.toFixed(1)} ✓
-                      </Text>
-                    ) : (
-                      <Text color="red" bold>
-                        {c.value.toFixed(1)} ✗
-                      </Text>
-                    )}
-                  </Box>
-                  <Box marginTop={1}>
-                    <Text wrap="wrap">{c.reasoning}</Text>
-                  </Box>
-                </Box>
-              ))
-            )}
+            {(() => {
+              const evaluatorRows = criteria.filter((c) => c.type);
+              const otherMetrics = criteria.filter((c) => !c.type);
+
+              if (criteria.length === 0) {
+                return (
+                  <Text color="yellow">No evaluation results found.</Text>
+                );
+              }
+
+              return (
+                <>
+                  {evaluatorRows.length === 0 ? (
+                    <Text dimColor>No evaluators ran for this simulation.</Text>
+                  ) : (
+                    evaluatorRows.map((c, idx) => (
+                      <Box
+                        key={idx}
+                        flexDirection="column"
+                        marginBottom={1}
+                        borderStyle="single"
+                        borderColor={c.value >= 0.5 ? "green" : "red"}
+                        paddingX={1}
+                      >
+                        <Box>
+                          <Text bold>{c.name.replace(/_/g, " ")}</Text>
+                          <Text> </Text>
+                          {c.value >= 0.5 ? (
+                            <Text color="green" bold>
+                              {c.value.toFixed(1)} ✓
+                            </Text>
+                          ) : (
+                            <Text color="red" bold>
+                              {c.value.toFixed(1)} ✗
+                            </Text>
+                          )}
+                        </Box>
+                        <Box marginTop={1}>
+                          <Text wrap="wrap">{c.reasoning}</Text>
+                        </Box>
+                      </Box>
+                    ))
+                  )}
+
+                  {otherMetrics.length > 0 && (
+                    <Box flexDirection="column" marginTop={1}>
+                      <Box marginBottom={1}>
+                        <Text bold>Other Metrics</Text>
+                      </Box>
+                      <Table
+                        columns={[
+                          { key: "name", label: "Metric", width: 30 },
+                          {
+                            key: "value",
+                            label: "Value",
+                            width: 14,
+                            align: "right" as const,
+                          },
+                        ]}
+                        data={otherMetrics.map((c) => ({
+                          name: c.name,
+                          value:
+                            Math.abs(c.value) >= 100 ||
+                            Number.isInteger(c.value)
+                              ? c.value.toFixed(2)
+                              : c.value.toFixed(3),
+                        }))}
+                      />
+                    </Box>
+                  )}
+                </>
+              );
+            })()}
 
             <Box marginTop={1}>
               <Text dimColor>Press q or Esc to go back to results</Text>
@@ -1661,20 +1774,29 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
                       <Text bold>Scenario: </Text>
                       <Text>{scenarioLabel}</Text>
                     </Box>
-                    {r.criteria.length > 0 && (
-                      <Box flexDirection="column" marginTop={1}>
-                        {r.criteria.map((c, cIdx) => (
-                          <Box key={cIdx}>
-                            <Box width={30}>
-                              <Text dimColor>{c.name.replace(/_/g, " ")}</Text>
+                    {(() => {
+                      // Cards on the leaderboard show only judge evaluators
+                      // (binary/rating). Latency rows (``llm/ttft`` etc.) and
+                      // ``stt_llm_judge_score`` come from the same CSV but
+                      // have an empty ``type`` and are surfaced separately
+                      // via the Overall Metrics chart above.
+                      const evaluatorRows = r.criteria.filter((c) => c.type);
+                      if (evaluatorRows.length === 0) return null;
+                      return (
+                        <Box flexDirection="column" marginTop={1}>
+                          {evaluatorRows.map((c, cIdx) => (
+                            <Box key={cIdx}>
+                              <Box width={30}>
+                                <Text dimColor>{c.name.replace(/_/g, " ")}</Text>
+                              </Box>
+                              <Text color={c.value >= 0.5 ? "green" : "red"}>
+                                {c.value.toFixed(1)} {c.value >= 0.5 ? "✓" : "✗"}
+                              </Text>
                             </Box>
-                            <Text color={c.value >= 0.5 ? "green" : "red"}>
-                              {c.value.toFixed(1)} {c.value >= 0.5 ? "✓" : "✗"}
-                            </Text>
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
+                          ))}
+                        </Box>
+                      );
+                    })()}
                   </Box>
                 );
               })}

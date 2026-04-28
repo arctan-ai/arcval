@@ -20,18 +20,21 @@ from google.cloud import texttospeech
 from smallestai.waves import TTSConfig, WavesStreamingTTS
 
 import numpy as np
-from loguru import logger
 import pandas as pd
 
 import backoff
 
 from calibrate.utils import (
-    configure_print_logger,
-    log_and_print,
     get_tts_language_code,
     validate_tts_language,
+    provider_log as _log,
+    provider_log_file as _current_log_file,
 )
 from calibrate.tts.metrics import get_tts_llm_judge_score
+from calibrate.judges import (
+    is_rating,
+    DEFAULT_TTS_EVALUATOR,
+)
 from calibrate.langfuse import (
     observe,
     langfuse,
@@ -314,7 +317,7 @@ async def synthesize_groq(text: str, language: str, audio_path: str) -> Dict:
         model=model, voice=voice, input=text, response_format=response_format
     )
 
-    log_and_print(f"\033[93mStoring generated audio to {audio_path}\033[0m")
+    _log(f"\033[93mStoring generated audio to {audio_path}\033[0m")
     await response.write_to_file(audio_path)
 
     return {}
@@ -351,7 +354,7 @@ async def synthesize_sarvam(text: str, language: str, audio_path: str) -> Dict:
                     if ttfb is None:
                         ttfb = time.time() - start_time
                         # Print "Started audio generation" in yellow using ANSI escape code for yellow
-                        log_and_print(
+                        _log(
                             f"\033[93mStoring generated audio to {audio_path}\033[0m",
                         )
 
@@ -361,7 +364,7 @@ async def synthesize_sarvam(text: str, language: str, audio_path: str) -> Dict:
                     f.flush()
 
         # print(f"All {chunk_count} chunks saved to output.mp3")
-        log_and_print("\033[93mAudio generation complete\033[0m")
+        _log("\033[93mAudio generation complete\033[0m")
         if hasattr(ws, "_websocket") and not ws._websocket.closed:
             await ws._websocket.close()
             print("WebSocket connection closed.")
@@ -497,16 +500,16 @@ async def run_tts_eval(
 
         # Skip if already processed
         if _id in processed_ids:
-            log_and_print(f"Skipping already processed: {_id}")
+            _log(f"Skipping already processed: {_id}")
             continue
 
-        log_and_print(f"Processing [{i+1}/{len(gt_data)}]: {_id}")
+        _log(f"Processing [{i+1}/{len(gt_data)}]: {_id}")
 
         audio_path = join(audio_output_dir, f"{_id}.wav")
         try:
             result = await synthesize_speech(text, provider, language, audio_path)
         except Exception as e:
-            log_and_print(f"\033[91mFailed to synthesize {_id}: {e}\033[0m")
+            _log(f"\033[91mFailed to synthesize {_id}: {e}\033[0m")
             raise
 
         # Handle optional ttfb (some providers may not return it)
@@ -531,7 +534,7 @@ async def run_tts_eval(
 
         success_count += 1
         if ttfb is not None:
-            log_and_print(f"\n\033[93m  TTFB: {ttfb:.3f}s\033[0m")
+            _log(f"\n\033[93m  TTFB: {ttfb:.3f}s\033[0m")
 
     return {
         "success_count": success_count,
@@ -593,14 +596,13 @@ def validate_tts_input_file(input_path: str) -> tuple[bool, str]:
     return True, ""
 
 
-# Expected columns in results.csv for TTS evaluation
+# Expected base columns in results.csv for TTS evaluation
+# (judge columns are dynamic based on criteria, so only check base columns)
 TTS_RESULTS_COLUMNS = [
     "id",
     "text",
     "audio_path",
     "ttfb",
-    "llm_judge_score",
-    "llm_judge_reasoning",
 ]
 
 
@@ -675,6 +677,7 @@ async def run_single_provider_eval(
     debug: bool,
     debug_count: int,
     overwrite: bool,
+    judge_evaluators: list[dict] = None,
 ) -> dict:
     """Run TTS evaluation for a single provider."""
     provider_output_dir = os.path.join(output_dir, provider)
@@ -684,127 +687,150 @@ async def run_single_provider_eval(
     if exists(log_save_path):
         os.remove(log_save_path)
 
-    logger.remove()
-    logger.add(log_save_path)
+    # Drop any stale results.log left over from the previous (loguru-based) layout
+    legacy_results_log = join(provider_output_dir, "results.log")
+    if exists(legacy_results_log):
+        os.remove(legacy_results_log)
 
-    print_log_save_path = join(provider_output_dir, "results.log")
-    if exists(print_log_save_path):
-        os.remove(print_log_save_path)
+    token = _current_log_file.set(log_save_path)
+    try:
+        _log("--------------------------------")
+        _log(f"\033[33mRunning TTS evaluation for provider: {provider}\033[0m")
 
-    configure_print_logger(print_log_save_path)
+        # Validate language is supported by the provider
+        validate_tts_language(language, provider)
 
-    log_and_print("--------------------------------")
-    log_and_print(f"\033[33mRunning TTS evaluation for provider: {provider}\033[0m")
+        df = pd.read_csv(input_file)
 
-    # Validate language is supported by the provider
-    validate_tts_language(language, provider)
+        ids = df["id"].tolist()
+        texts = df["text"].astype(str).tolist()
 
-    df = pd.read_csv(input_file)
+        if debug:
+            ids = ids[:debug_count]
+            texts = texts[:debug_count]
 
-    ids = df["id"].tolist()
-    texts = df["text"].astype(str).tolist()
+        gt_data = [{"id": _id, "text": text} for _id, text in zip(ids, texts)]
 
-    if debug:
-        ids = ids[:debug_count]
-        texts = texts[:debug_count]
+        results_csv_path = join(provider_output_dir, "results.csv")
 
-    gt_data = [{"id": _id, "text": text} for _id, text in zip(ids, texts)]
+        # Validate existing results.csv structure (if not overwriting)
+        if not overwrite:
+            is_valid, error_msg = validate_existing_results_csv(results_csv_path)
+            if not is_valid:
+                _log(f"\033[31mError: {error_msg}\033[0m")
+                return {"provider": provider, "status": "error", "error": error_msg}
 
-    results_csv_path = join(provider_output_dir, "results.csv")
+        _log(f"Processing {len(gt_data)} texts with provider: {provider}")
+        _log("--------------------------------")
 
-    # Validate existing results.csv structure (if not overwriting)
-    if not overwrite:
-        is_valid, error_msg = validate_existing_results_csv(results_csv_path)
-        if not is_valid:
-            log_and_print(f"\033[31mError: {error_msg}\033[0m")
-            return {"provider": provider, "status": "error", "error": error_msg}
+        # Run TTS evaluation
+        eval_results = await run_tts_eval(
+            gt_data=gt_data,
+            provider=provider,
+            language=language,
+            output_dir=provider_output_dir,
+            results_csv_path=results_csv_path,
+            overwrite=overwrite,
+        )
 
-    log_and_print(f"Processing {len(gt_data)} texts with provider: {provider}")
-    log_and_print("--------------------------------")
+        _log("--------------------------------")
+        _log(f"Successfully synthesized: {eval_results['success_count']} texts")
 
-    # Run TTS evaluation
-    eval_results = await run_tts_eval(
-        gt_data=gt_data,
-        provider=provider,
-        language=language,
-        output_dir=provider_output_dir,
-        results_csv_path=results_csv_path,
-        overwrite=overwrite,
-    )
+        # Reload the final results from CSV
+        if exists(results_csv_path):
+            final_df = pd.read_csv(results_csv_path)
+            all_ids = final_df["id"].tolist()
+            all_texts = final_df["text"].astype(str).tolist()
+            all_audio_paths = final_df["audio_path"].tolist()
+            all_ttfb = final_df["ttfb"].tolist()
+        else:
+            _log("No results found")
+            return {
+                "provider": provider,
+                "status": "error",
+                "error": "No results found",
+            }
 
-    log_and_print("--------------------------------")
-    log_and_print(f"Successfully synthesized: {eval_results['success_count']} texts")
+        # Run evaluators
+        _log("Running evaluators...")
+        _evaluators = (
+            judge_evaluators if judge_evaluators else [DEFAULT_TTS_EVALUATOR]
+        )
+        llm_judge_results = await get_tts_llm_judge_score(
+            all_audio_paths,
+            all_texts,
+            evaluators=_evaluators,
+        )
+        for name, score_dict in llm_judge_results["scores"].items():
+            _log(f"  {name}: {score_dict['mean']:.4f}")
 
-    # Reload the final results from CSV
-    if exists(results_csv_path):
-        final_df = pd.read_csv(results_csv_path)
-        all_ids = final_df["id"].tolist()
-        all_texts = final_df["text"].astype(str).tolist()
-        all_audio_paths = final_df["audio_path"].tolist()
-        all_ttfb = final_df["ttfb"].tolist()
-    else:
-        log_and_print("No results found")
-        return {"provider": provider, "status": "error", "error": "No results found"}
+        # Map evaluator name → evaluator dict (for per-row value extraction)
+        _evaluators_by_name = {ev["name"]: ev for ev in _evaluators}
 
-    # Run LLM judge evaluation
-    log_and_print("Running LLM judge evaluation...")
-    llm_judge_results = await get_tts_llm_judge_score(all_audio_paths, all_texts)
-    log_and_print(f"LLM Judge Score: {llm_judge_results['score']}")
+        # Each evaluator gets one entry keyed by its name. The value is the
+        # full per-criterion dict (``type``, ``mean``, plus ``scale_min``/
+        # ``scale_max`` for ratings). Downstream consumers (leaderboard,
+        # summary print, UI) detect evaluators as dict values that carry a
+        # ``type`` field.
+        metrics_data = {}
+        for name, score_dict in llm_judge_results["scores"].items():
+            metrics_data[name] = score_dict
 
-    # Build metrics data
-    metrics_data = {
-        "llm_judge_score": llm_judge_results["score"],
-    }
+        # Add ttfb metrics with mean, std, and values (filter out None/NaN values)
+        valid_ttfb = [
+            t
+            for t in all_ttfb
+            if t is not None and not (isinstance(t, float) and np.isnan(t))
+        ]
+        if valid_ttfb:
+            metrics_data["ttfb"] = {
+                "mean": float(np.mean(valid_ttfb)),
+                "std": float(np.std(valid_ttfb)),
+                "values": valid_ttfb,
+            }
 
-    # Add ttfb metrics with mean, std, and values (filter out None/NaN values)
-    valid_ttfb = [
-        t
-        for t in all_ttfb
-        if t is not None and not (isinstance(t, float) and np.isnan(t))
-    ]
-    if valid_ttfb:
-        metrics_data["ttfb"] = {
-            "mean": float(np.mean(valid_ttfb)),
-            "std": float(np.std(valid_ttfb)),
-            "values": valid_ttfb,
-        }
+        # Save metrics
+        metrics_save_path = join(provider_output_dir, "metrics.json")
+        with open(metrics_save_path, "w") as f:
+            json.dump(metrics_data, f, indent=4)
 
-    # Save metrics
-    metrics_save_path = join(provider_output_dir, "metrics.json")
-    with open(metrics_save_path, "w") as f:
-        json.dump(metrics_data, f, indent=4)
+        _log(f"Metrics saved to: {metrics_save_path}")
 
-    log_and_print(f"Metrics saved to: {metrics_save_path}")
-
-    # Update results CSV with LLM judge scores
-    data = []
-    for _id, text, audio_path, ttfb, llm_judge_score in zip(
-        all_ids,
-        all_texts,
-        all_audio_paths,
-        all_ttfb,
-        llm_judge_results["per_row"],
-    ):
-        data.append(
-            {
+        # Update results CSV with evaluator scores
+        data = []
+        for _id, text, audio_path, ttfb, llm_row in zip(
+            all_ids,
+            all_texts,
+            all_audio_paths,
+            all_ttfb,
+            llm_judge_results["per_row"],
+        ):
+            row = {
                 "id": _id,
                 "text": text,
                 "audio_path": audio_path,
                 "ttfb": ttfb,
-                "llm_judge_score": llm_judge_score["match"],
-                "llm_judge_reasoning": llm_judge_score["reasoning"],
             }
-        )
+            for name, ev in _evaluators_by_name.items():
+                ev_result = llm_row[name]
+                if is_rating(ev):
+                    row[name] = ev_result["score"]
+                else:
+                    row[name] = bool(ev_result["match"])
+                row[f"{name}_reasoning"] = ev_result["reasoning"]
+            data.append(row)
 
-    pd.DataFrame(data).to_csv(results_csv_path, index=False)
-    log_and_print(f"Results saved to: {results_csv_path}")
+        pd.DataFrame(data).to_csv(results_csv_path, index=False)
+        _log(f"Results saved to: {results_csv_path}")
 
-    return {
-        "provider": provider,
-        "status": "completed",
-        "metrics": metrics_data,
-        "output_dir": provider_output_dir,
-    }
+        return {
+            "provider": provider,
+            "status": "completed",
+            "metrics": metrics_data,
+            "output_dir": provider_output_dir,
+        }
+    finally:
+        _current_log_file.reset(token)
 
 
 async def main():
@@ -879,8 +905,11 @@ async def main():
         print(f"\033[31mInput validation error: {error_msg}\033[0m")
         sys.exit(1)
 
-    if not exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    # ``exist_ok=True`` makes this safe when several ``calibrate tts``
+    # subprocesses race to create the output dir on first use; the previous
+    # ``if not exists: makedirs(...)`` pattern was non-atomic and the loser
+    # raised ``FileExistsError``.
+    os.makedirs(args.output_dir, exist_ok=True)
 
     print("\n\033[91mTTS Evaluation\033[0m\n")
     print(f"Provider: {provider}")
@@ -909,15 +938,24 @@ async def main():
         print(f"  {provider}: \033[31mError - {result.get('error')}\033[0m")
     else:
         metrics = result.get("metrics", {})
-        llm_score = metrics.get("llm_judge_score", "N/A")
+        # Evaluator entries are dicts carrying a ``type`` field; ttfb has no
+        # ``type`` so it's correctly excluded from the judge-score string.
+        judge_scores = {
+            k: v["mean"]
+            for k, v in metrics.items()
+            if isinstance(v, dict) and "type" in v
+        }
         ttfb_data = metrics.get("ttfb", {})
-        ttfb_mean = ttfb_data.get("mean", "N/A") if ttfb_data else "N/A"
-        if isinstance(llm_score, float) and isinstance(ttfb_mean, float):
-            print(f"  {provider}: LLM Score={llm_score:.2f}, TTFB={ttfb_mean:.3f}s")
-        elif isinstance(llm_score, float):
-            print(f"  {provider}: LLM Score={llm_score:.2f}, TTFB={ttfb_mean}")
-        else:
-            print(f"  {provider}: LLM Score={llm_score}, TTFB={ttfb_mean}")
+        ttfb_mean = (
+            ttfb_data.get("mean", "N/A") if isinstance(ttfb_data, dict) else "N/A"
+        )
+        judge_str = ", ".join(f"{k}={v:.2f}" for k, v in judge_scores.items())
+        ttfb_str = (
+            f"TTFB={ttfb_mean:.3f}s"
+            if isinstance(ttfb_mean, float)
+            else f"TTFB={ttfb_mean}"
+        )
+        print(f"  {provider}: {judge_str}, {ttfb_str}")
 
 
 if __name__ == "__main__":

@@ -1,21 +1,42 @@
-from evaluate import load
-from typing import List
-from transformers.models.whisper.english_normalizer import BasicTextNormalizer
+"""
+STT evaluation metrics.
+"""
+
+from typing import List, Optional
+
 import numpy as np
+from evaluate import load
 from tqdm.asyncio import tqdm_asyncio
-import difflib
-from calibrate.langfuse import AsyncOpenAI, observe, langfuse, langfuse_enabled
-from pydantic import BaseModel, Field
+from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 import backoff
 
+from calibrate.judges import (
+    text_judge,
+    is_rating,
+    evaluator_result_value,
+    DEFAULT_TEXT_JUDGE_MODEL,
+    DEFAULT_STT_EVALUATOR,
+)
+from calibrate.langfuse import observe, langfuse, langfuse_enabled
+
 normalizer = BasicTextNormalizer()
+
+# Re-export for existing imports
+DEFAULT_STT_JUDGE_MODEL = DEFAULT_TEXT_JUDGE_MODEL
+
+
+def _resolve_evaluators(evaluators: Optional[List[dict]]) -> List[dict]:
+    """Return ``evaluators`` if non-empty, else the implicit default."""
+    return list(evaluators) if evaluators else [DEFAULT_STT_EVALUATOR]
 
 
 def get_wer_score(references: List[str], predictions: List[str]) -> float:
     wer_metric = load("wer")
 
     references = [normalizer(str(ref)) for ref in references]
-    predictions = [normalizer(str(pred)) if isinstance(pred, str) else "" for pred in predictions]
+    predictions = [
+        normalizer(str(pred)) if isinstance(pred, str) else "" for pred in predictions
+    ]
 
     per_row_wer = [
         wer_metric.compute(predictions=[p], references=[r])
@@ -25,73 +46,40 @@ def get_wer_score(references: List[str], predictions: List[str]) -> float:
     return {"score": np.mean(per_row_wer), "per_row": per_row_wer}
 
 
-def get_string_similarity(references: List[str], predictions: List[str]) -> float:
-    similarities = []
-
-    # Use edit distance (Levenshtein distance) to compute similarity between strings
-    for reference, prediction in zip(references, predictions):
-        seq = difflib.SequenceMatcher(
-            None,
-            normalizer(str(reference)),
-            normalizer(str(prediction)) if isinstance(prediction, str) else "",
-        )
-        similarities.append(seq.ratio())  # value between 0 and 1
-
-    return {
-        "score": np.mean(similarities),
-        "per_row": similarities,
-    }
-
-
 @backoff.on_exception(backoff.expo, Exception, max_tries=5, factor=2)
 @observe(
     name="stt_llm_judge",
     capture_input=False,
 )
-async def stt_llm_judge(reference: str, prediction: str) -> float:
-    client = AsyncOpenAI()
+async def stt_llm_judge(
+    reference: str,
+    prediction: str,
+    evaluators: Optional[List[dict]] = None,
+    fallback_model: str = DEFAULT_STT_JUDGE_MODEL,
+) -> dict:
+    """Evaluate an STT transcription against one or more evaluators.
 
-    class Output(BaseModel):
-        reasoning: str = Field(
-            ...,
-            description="Analyse the inputs on whether they match or not given the guidelines",
-        )
-        match: bool = Field(
-            ..., description="True if the two strings match, otherwise false."
-        )
+    Args:
+        reference: The source/ground-truth text.
+        prediction: The STT transcription output.
+        evaluators: List of evaluator dicts. If omitted, the implicit
+            ``DEFAULT_STT_EVALUATOR`` is used.
+        fallback_model: Model id used when an evaluator lacks ``judge_model``.
 
-    system_prompt = """You are a highly accurate evaluator evaluating the transcription output of an STT model.
+    Returns:
+        Dict keyed by evaluator name. Binary entries are
+        ``{"reasoning": str, "match": bool}``; rating entries are
+        ``{"reasoning": str, "score": int}``.
+    """
+    evaluators = _resolve_evaluators(evaluators)
 
-You will be given two strings - one is the source string used to produce an audio and the other is the transcription of that audio.
+    user_prompt = f"Source: {reference}\nTranscription: {prediction}"
 
-You need to evaluate if the two strings are the same.
-
-# Important Instructions:
-- Check whether the values represented by both the strings match. E.g. if one string says 1,2,3 but the other string says "one, two, three" or "one, 2, three", they should be considered the same as their underlying value is the same. However, if the actual values itself are different, e.g. for the name of a person or address or the value of any other key detail - that difference should be noted.
-- Ignore differences like a word being split up into more than 1 word by spaces. Look at whether the values mean the same in both the strings.
-- If all the "values" for the strings match, mark it as True. Else, False."""
-
-    user_prompt = f"""Source: {reference}\nTranscription: {prediction}"""
-
-    response = await client.responses.parse(
-        model="gpt-4.1-2025-04-14",
-        input=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-        text_format=Output,
-        temperature=0,
-        max_output_tokens=2048,
-        store=True,
+    result = await text_judge(
+        evaluators=evaluators,
+        user_prompt=user_prompt,
+        fallback_model=fallback_model,
     )
-
-    response = response.output_parsed.model_dump()
 
     if langfuse_enabled and langfuse:
         langfuse.update_current_trace(
@@ -99,25 +87,78 @@ You need to evaluate if the two strings are the same.
             metadata={
                 "reference": reference,
                 "prediction": prediction,
-                "output": response,
+                "output": result,
             },
         )
 
-    return response
+    return result
 
 
-async def get_llm_judge_score(references: List[str], predictions: List[str]) -> float:
-    coroutines = []
+async def get_llm_judge_score(
+    references: List[str],
+    predictions: List[str],
+    evaluators: Optional[List[dict]] = None,
+    fallback_model: str = DEFAULT_STT_JUDGE_MODEL,
+) -> dict:
+    """Run STT judge across all rows and aggregate per-evaluator scores.
 
-    for reference, prediction in zip(references, predictions):
-        coroutines.append(stt_llm_judge(str(reference), str(prediction)))
+    Returns:
+        {
+            "scores": {
+                "semantic_match": {"type": "binary", "mean": 0.83, ...},
+                ...
+            },
+            "score": float,                        # mean across evaluators
+            "per_row": [
+                {"semantic_match": {"reasoning": ..., "match": ...}, ...},
+                ...
+            ]
+        }
+
+    Iteration order of ``scores`` and each ``per_row`` entry matches the
+    order of the ``evaluators`` argument (Python dicts preserve insertion
+    order; ``asyncio.gather`` preserves coroutine order).
+    """
+    evaluators = _resolve_evaluators(evaluators)
+
+    coroutines = [
+        stt_llm_judge(
+            str(reference),
+            str(prediction),
+            evaluators=evaluators,
+            fallback_model=fallback_model,
+        )
+        for reference, prediction in zip(references, predictions)
+    ]
 
     results = await tqdm_asyncio.gather(
         *coroutines,
-        desc="Running STT LLM Judge",
+        desc="Running STT evaluators",
     )
 
+    # Aggregate per-evaluator scores — mean of 0/1 for binary, mean of scores for rating.
+    scores: dict = {}
+    for ev in evaluators:
+        name = ev["name"]
+        per_row_values = [evaluator_result_value(ev, row[name]) for row in results]
+        if is_rating(ev):
+            scores[name] = {
+                "type": "rating",
+                "mean": float(np.mean(per_row_values)),
+                "scale_min": int(ev["scale_min"]),
+                "scale_max": int(ev["scale_max"]),
+            }
+        else:
+            scores[name] = {
+                "type": "binary",
+                "mean": float(np.mean(per_row_values)),  # pass-rate fraction 0.0–1.0
+            }
+
+    # Backward compat: top-level "score" = mean across evaluator means.
+    overall_score = float(np.mean([s["mean"] for s in scores.values()]))
+
     return {
-        "score": np.mean([int(result["match"]) for result in results]),
+        "scores": scores,
+        "score": overall_score,
         "per_row": results,
     }

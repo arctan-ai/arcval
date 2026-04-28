@@ -12,7 +12,7 @@ Library Usage:
         tools=[...],
         personas=[...],
         scenarios=[...],
-        evaluation_criteria=[...],
+        evaluators=[...],
         output_dir="./out"
     ))
 """
@@ -71,7 +71,7 @@ class _Simulation:
         tools: List[dict],
         personas: List[dict],
         scenarios: List[dict],
-        evaluation_criteria: List[dict],
+        evaluators: List[dict],
         output_dir: str = "./out",
         stt: Optional[STTConfig] = None,
         tts: Optional[TTSConfig] = None,
@@ -88,7 +88,7 @@ class _Simulation:
             tools: List of tool definitions available to the agent
             personas: List of persona dicts with 'characteristics', 'gender', 'language', optional 'interruption_sensitivity'
             scenarios: List of scenario dicts with 'description'
-            evaluation_criteria: List of criteria dicts with 'name' and 'description'
+            evaluators: List of evaluator dicts with 'name', 'system_prompt', and optional 'judge_model'/'type'/'scale_min'/'scale_max'
             output_dir: Path to output directory for results (default: ./out)
             stt: STT configuration (default: Google)
             tts: TTS configuration (default: Google)
@@ -113,15 +113,18 @@ class _Simulation:
             ...         "interruption_sensitivity": "medium"
             ...     }],
             ...     scenarios=[{"description": "User completes the form"}],
-            ...     evaluation_criteria=[{"name": "completeness", "description": "All questions answered"}],
+            ...     evaluators=[{"name": "completeness", "system_prompt": "Evaluate whether all questions were answered..."}],
             ...     output_dir="./out",
             ...     stt=STTConfig(provider="google"),
             ...     tts=TTSConfig(provider="google"),
             ...     llm=LLMConfig(provider="openrouter", model="openai/gpt-4.1"),
             ... ))
         """
+        from calibrate.judges import require_simulation_evaluators
         from calibrate.agent.run_simulation import run_single_simulation_task
         import gc
+
+        require_simulation_evaluators(evaluators)
 
         os.makedirs(output_dir, exist_ok=True)
 
@@ -131,7 +134,7 @@ class _Simulation:
             "tools": tools,
             "personas": personas,
             "scenarios": scenarios,
-            "evaluation_criteria": evaluation_criteria,
+            "evaluators": evaluators,
             "settings": {
                 "agent_speaks_first": agent_speaks_first,
                 "max_turns": max_turns,
@@ -208,20 +211,48 @@ class _Simulation:
 
             for eval_result in evaluation_results:
                 criterion_name = eval_result["name"]
-                match_value = float(eval_result["match"])
-                metrics_by_criterion[criterion_name].append(match_value)
+                # value works for both binary (0/1) and rating (int score)
+                metrics_by_criterion[criterion_name].append(
+                    float(eval_result["value"])
+                )
 
             if stt_judge and "score" in stt_judge:
                 stt_llm_judge_scores.append(stt_judge["score"])
 
+        # Track criterion types and scale bounds for metrics.json enrichment
+        criterion_types: dict = {}
+        criterion_scales: dict = {}
+        for result in results:
+            if isinstance(result, Exception) or result is None:
+                continue
+            _, evaluation_results, _ = result
+            for eval_result in evaluation_results or []:
+                criterion_types.setdefault(
+                    eval_result["name"], eval_result.get("type", "binary")
+                )
+                if "scale_min" in eval_result and "scale_max" in eval_result:
+                    criterion_scales.setdefault(
+                        eval_result["name"],
+                        (
+                            int(eval_result["scale_min"]),
+                            int(eval_result["scale_max"]),
+                        ),
+                    )
+
         # Compute summary
         metrics_summary = {}
         for criterion_name, values in metrics_by_criterion.items():
-            metrics_summary[criterion_name] = {
+            entry = {
+                "type": criterion_types.get(criterion_name, "binary"),
                 "mean": float(np.mean(values)),
                 "std": float(np.std(values)),
                 "values": values,
             }
+            if criterion_name in criterion_scales:
+                entry["scale_min"], entry["scale_max"] = criterion_scales[
+                    criterion_name
+                ]
+            metrics_summary[criterion_name] = entry
 
         if stt_llm_judge_scores:
             metrics_summary["stt_llm_judge"] = {
@@ -249,7 +280,7 @@ class _Simulation:
         system_prompt: str,
         language: Literal["english", "hindi"],
         gender: Literal["male", "female"],
-        evaluation_criteria: List[dict],
+        evaluators: List[dict],
         output_dir: str,
         interrupt_probability: float = 0.0,
         port: int = 8765,
@@ -263,7 +294,7 @@ class _Simulation:
             system_prompt: System prompt for the simulated user
             language: Language for the simulation (english or hindi)
             gender: Gender for TTS voice selection
-            evaluation_criteria: List of evaluation criteria dicts
+            evaluators: List of evaluator dicts with 'name', 'system_prompt', and optional 'judge_model'/'type'/'scale_min'/'scale_max'
             output_dir: Output directory for results
             interrupt_probability: Probability of user interrupting the agent (0.0-1.0)
             port: WebSocket port for the simulation
@@ -280,17 +311,20 @@ class _Simulation:
             ...     system_prompt="You are simulating a user...",
             ...     language="english",
             ...     gender="female",
-            ...     evaluation_criteria=[{"name": "completeness", "description": "..."}],
+            ...     evaluators=[{"name": "completeness", "system_prompt": "..."}],
             ...     output_dir="./out"
             ... ))
         """
+        from calibrate.judges import require_simulation_evaluators
         from calibrate.agent.run_simulation import run_simulation as _run_simulation
+
+        require_simulation_evaluators(evaluators)
 
         return await _run_simulation(
             system_prompt=system_prompt,
             language=language,
             gender=gender,
-            evaluation_criteria=evaluation_criteria,
+            evaluators=evaluators,
             output_dir=output_dir,
             interrupt_probability=interrupt_probability,
             port=port,

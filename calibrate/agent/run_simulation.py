@@ -31,8 +31,15 @@ from calibrate.utils import (
     build_tools_schema,
     make_webhook_call,
 )
-from calibrate.llm.metrics import evaluate_simuation
-from calibrate.stt.metrics import get_llm_judge_score as stt_llm_judge_score
+from calibrate.llm.metrics import evaluate_simuation, DEFAULT_SIMULATION_JUDGE_MODEL
+from calibrate.stt.metrics import get_llm_judge_score as stt_llm_judge_score, DEFAULT_STT_JUDGE_MODEL
+from calibrate.judges import (
+    DEFAULT_STT_EVALUATOR,
+    evaluator_result_value,
+    format_evaluation_result_lines,
+    is_rating,
+    require_simulation_evaluators,
+)
 import pandas as pd
 
 USER_MESSAGE_COLOR = "\033[94m"
@@ -822,14 +829,18 @@ async def run_simulation(
         "hindi",
     ],
     gender: Literal["male", "female"],
-    evaluation_criteria: list[dict],
+    evaluators: list[dict],
     output_dir: str,
     interrupt_probability: float,
     port: int = DEFAULT_PORT,
     agent_speaks_first: bool = True,
     max_turns: int = DEFAULT_MAX_TURNS,
     tools: list[dict] = None,
+    fallback_judge_model: str = DEFAULT_SIMULATION_JUDGE_MODEL,
+    fallback_stt_judge_model: str = DEFAULT_STT_JUDGE_MODEL,
 ) -> dict:
+    require_simulation_evaluators(evaluators)
+
     # Set context for EVAL logs
     current_context.set("EVAL")
 
@@ -862,7 +873,7 @@ async def run_simulation(
             system_prompt=system_prompt,
             language=language,
             gender=gender,
-            evaluation_criteria=evaluation_criteria,
+            evaluators=evaluators,
             output_dir=output_dir,
             interrupt_probability=interrupt_probability,
             port=port,
@@ -871,6 +882,8 @@ async def run_simulation(
             tools=tools,
             captured_errors=captured_errors,
             pipeline_task_ref=_pipeline_task_ref,
+            fallback_judge_model=fallback_judge_model,
+            fallback_stt_judge_model=fallback_stt_judge_model,
         )
     finally:
         logger.remove(error_sink_id)
@@ -880,7 +893,7 @@ async def _run_simulation_inner(
     system_prompt: str,
     language: Literal["english", "hindi"],
     gender: Literal["male", "female"],
-    evaluation_criteria: list[dict],
+    evaluators: list[dict],
     output_dir: str,
     interrupt_probability: float,
     port: int,
@@ -889,6 +902,8 @@ async def _run_simulation_inner(
     tools: list[dict],
     captured_errors: list[str],
     pipeline_task_ref: list,
+    fallback_judge_model: str = DEFAULT_SIMULATION_JUDGE_MODEL,
+    fallback_stt_judge_model: str = DEFAULT_STT_JUDGE_MODEL,
 ) -> dict:
     # Build webhook configs from tools for function call handling
     webhook_configs = {}
@@ -1162,21 +1177,33 @@ async def _run_simulation_inner(
         )
 
     log_and_print(
-        f"Evaluating the conversation based on the criteria:\n\n{evaluation_criteria}"
+        f"Evaluating the conversation against {len(evaluators)} evaluator(s)."
     )
     # Get evaluation results from LLM judge
     llm_judge_result = await evaluate_simuation(
-        transcript, evaluation_criteria, agent_system_prompt=system_prompt
+        transcript, evaluators, fallback_model=fallback_judge_model
     )
 
-    evaluation_results = [
-        {
-            "name": criterion["name"],
-            "match": llm_judge_result[criterion["name"]]["match"],
-            "reasoning": llm_judge_result[criterion["name"]]["reasoning"],
+    def _build_eval_row(evaluator: dict, judge_row: dict) -> dict:
+        row = {
+            "name": evaluator["name"],
+            "type": "rating" if is_rating(evaluator) else "binary",
+            "value": evaluator_result_value(evaluator, judge_row),
+            "reasoning": judge_row["reasoning"],
         }
-        for criterion in evaluation_criteria
+        if is_rating(evaluator):
+            row["scale_min"] = int(evaluator["scale_min"])
+            row["scale_max"] = int(evaluator["scale_max"])
+        return row
+
+    evaluation_results = [
+        _build_eval_row(ev, llm_judge_result[ev["name"]])
+        for ev in evaluators
     ]
+
+    for row in evaluation_results:
+        for line in format_evaluation_result_lines(row):
+            log_and_print(line)
 
     # Get user messages from transcript (these are what the agent heard/transcribed)
     user_messages_in_transcript = [
@@ -1202,6 +1229,37 @@ async def _run_simulation_inner(
             stt_llm_judge_result = await stt_llm_judge_score(
                 references=stt_eval_references,
                 predictions=stt_eval_predictions,
+                fallback_model=fallback_stt_judge_model,
+            )
+
+            # Surface per-evaluator STT judge results in the CLI/log so the
+            # voice simulation output mirrors the conversation evaluators above
+            # (e.g. ``[stt:semantic_match] mean pass rate: 83.3% (5/6)`` or
+            # ``[stt:fluency] mean: 4.20/5``). The aggregated mean across rows
+            # is the same value persisted into evaluation_results.csv.
+            for stt_ev_name, stt_score in (
+                stt_llm_judge_result.get("scores") or {}
+            ).items():
+                if stt_score.get("type") == "rating":
+                    mean = stt_score.get("mean", 0.0)
+                    scale_max = stt_score.get("scale_max")
+                    log_and_print(
+                        f"[stt:{stt_ev_name}] mean: {mean:.2f}"
+                        + (f"/{scale_max}" if scale_max is not None else "")
+                    )
+                else:
+                    mean = stt_score.get("mean", 0.0)
+                    matched = sum(
+                        1
+                        for row in stt_llm_judge_result.get("per_row") or []
+                        if row.get(stt_ev_name, {}).get("match")
+                    )
+                    log_and_print(
+                        f"[stt:{stt_ev_name}] mean pass rate: "
+                        f"{mean * 100:.1f}% ({matched}/{min_len})"
+                    )
+            log_and_print(
+                f"[stt] overall score: {stt_llm_judge_result.get('score', 0.0):.2f}"
             )
 
     # Build comprehensive metrics
@@ -1223,7 +1281,8 @@ async def _run_simulation_inner(
         evaluation_results_rows.append(
             {
                 "name": eval_result["name"],
-                "value": int(eval_result["match"]),
+                "type": eval_result.get("type", "binary"),
+                "value": eval_result["value"],
                 "reasoning": eval_result["reasoning"],
             }
         )
@@ -1275,9 +1334,13 @@ async def _run_simulation_inner(
             {
                 "reference": stt_eval_references,
                 "prediction": stt_eval_predictions,
-                "score": [int(row["match"]) for row in stt_llm_judge_result["per_row"]],
+                "score": [
+                    int(row[DEFAULT_STT_EVALUATOR["name"]]["match"])
+                    for row in stt_llm_judge_result["per_row"]
+                ],
                 "reasoning": [
-                    row["reasoning"] for row in stt_llm_judge_result["per_row"]
+                    row[DEFAULT_STT_EVALUATOR["name"]]["reasoning"]
+                    for row in stt_llm_judge_result["per_row"]
                 ],
             }
         )
@@ -1468,12 +1531,14 @@ async def _run_single_simulation_inner(
                     "Bot task completed unexpectedly before simulation could connect"
                 )
 
+            evaluators = config.get("evaluators") or []
+
             sim_task = asyncio.create_task(
                 run_simulation(
                     user_system_prompt,
                     language,
                     gender,
-                    config["evaluation_criteria"],
+                    evaluators,
                     simulation_output_dir,
                     interrupt_probability=interrupt_probability,
                     port=port,
@@ -1547,11 +1612,10 @@ async def _run_single_simulation_inner(
     if simulation_result:
         sim_metrics_row = {"name": simulation_name}
 
-        # Evaluation criteria metrics
+        # Evaluation criteria metrics (value works for both binary 0/1 and rating score)
         for eval_result in simulation_result.get("evaluation_results", []):
             criterion_name = eval_result["name"]
-            match_value = float(eval_result["match"])
-            sim_metrics_row[criterion_name] = match_value
+            sim_metrics_row[criterion_name] = float(eval_result["value"])
 
         # STT LLM judge score
         stt_judge = simulation_result.get("metrics", {}).get("stt_llm_judge")
@@ -1602,6 +1666,12 @@ async def main():
 
     with open(args.config, "r") as f:
         config = json.load(f)
+
+    try:
+        require_simulation_evaluators(config.get("evaluators"))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -1654,11 +1724,10 @@ async def main():
 
         all_simulation_metrics.append(sim_metrics_row)
 
-        # Evaluation criteria metrics
+        # Evaluation criteria metrics (value works for both binary 0/1 and rating score)
         for eval_result in evaluation_results:
             criterion_name = eval_result["name"]
-            match_value = float(eval_result["match"])
-            metrics_by_criterion[criterion_name].append(match_value)
+            metrics_by_criterion[criterion_name].append(float(eval_result["value"]))
 
         # STT LLM judge score
         if stt_judge and "score" in stt_judge:
@@ -1667,13 +1736,37 @@ async def main():
     # Compute and save aggregated metrics
     metrics_summary = {}
 
+    # Track criterion types and scale bounds
+    criterion_types: dict = {}
+    criterion_scales: dict = {}
+    for result in results:
+        if isinstance(result, Exception) or result is None:
+            continue
+        _, evaluation_results, _ = result
+        for eval_result in evaluation_results or []:
+            criterion_types.setdefault(
+                eval_result["name"], eval_result.get("type", "binary")
+            )
+            if "scale_min" in eval_result and "scale_max" in eval_result:
+                criterion_scales.setdefault(
+                    eval_result["name"],
+                    (
+                        int(eval_result["scale_min"]),
+                        int(eval_result["scale_max"]),
+                    ),
+                )
+
     # Aggregate evaluation criteria metrics
     for criterion_name, values in metrics_by_criterion.items():
-        metrics_summary[criterion_name] = {
+        entry = {
+            "type": criterion_types.get(criterion_name, "binary"),
             "mean": float(np.mean(values)),
             "std": float(np.std(values)),
             "values": values,
         }
+        if criterion_name in criterion_scales:
+            entry["scale_min"], entry["scale_max"] = criterion_scales[criterion_name]
+        metrics_summary[criterion_name] = entry
 
     # Aggregate STT LLM judge scores
     if stt_llm_judge_scores:

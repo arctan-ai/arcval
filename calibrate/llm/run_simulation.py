@@ -33,6 +33,7 @@ from pipecat.frames.frames import (
     FunctionCallResultProperties,
 )
 from pipecat.adapters.schemas.function_schema import FunctionSchema
+from calibrate.judges import require_simulation_evaluators
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.pipeline.pipeline import Pipeline
@@ -46,7 +47,31 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.openrouter.llm import OpenRouterLLMService
 from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
-from calibrate.llm.metrics import evaluate_simuation
+from calibrate.llm.metrics import evaluate_simuation, DEFAULT_SIMULATION_JUDGE_MODEL
+from calibrate.judges import (
+    evaluator_result_value,
+    format_evaluation_result_lines,
+    is_rating,
+)
+
+
+def _build_evaluation_result(evaluator: dict, judge_row: dict) -> dict:
+    """Build a per-row evaluation result, carrying rating scale bounds when relevant.
+
+    The scale bounds propagate through to ``metrics.json`` so the simulation
+    leaderboard can normalize rating means correctly when computing the
+    ``overall`` column.
+    """
+    result = {
+        "name": evaluator["name"],
+        "type": "rating" if is_rating(evaluator) else "binary",
+        "value": evaluator_result_value(evaluator, judge_row),
+        "reasoning": judge_row["reasoning"],
+    }
+    if is_rating(evaluator):
+        result["scale_min"] = int(evaluator["scale_min"])
+        result["scale_max"] = int(evaluator["scale_max"])
+    return result
 import pandas as pd
 import numpy as np
 
@@ -250,7 +275,7 @@ async def run_simulation(
     bot_system_prompt: str,
     tools: List[dict],
     user_system_prompt: str,
-    evaluation_criteria: list[dict],
+    evaluators: list[dict],
     bot_model: str = "gpt-4.1",
     user_model: str = "gpt-4.1",
     bot_provider: str = "openai",
@@ -258,8 +283,11 @@ async def run_simulation(
     agent_speaks_first: bool = True,
     max_turns: int = DEFAULT_MAX_TURNS,
     output_dir: Optional[str] = None,
+    fallback_judge_model: str = DEFAULT_SIMULATION_JUDGE_MODEL,
 ) -> List[str]:
     """Runs a text-only bot that processes text inputs through an LLM and returns text outputs."""
+    require_simulation_evaluators(evaluators)
+
     # Create LLM service
 
     if bot_provider == "openrouter":
@@ -495,20 +523,20 @@ async def run_simulation(
         )
 
     log_and_print(
-        f"Evaluating the conversation based on the criteria:\n\n{evaluation_criteria}"
+        f"Evaluating the conversation against {len(evaluators)} evaluator(s)."
     )
     llm_judge_result = await evaluate_simuation(
-        transcript, evaluation_criteria, agent_system_prompt=bot_system_prompt
+        transcript, evaluators, fallback_model=fallback_judge_model
     )
 
     evaluation_results = [
-        {
-            "name": criterion["name"],
-            "value": int(llm_judge_result[criterion["name"]]["match"]),
-            "reasoning": llm_judge_result[criterion["name"]]["reasoning"],
-        }
-        for criterion in evaluation_criteria
+        _build_evaluation_result(ev, llm_judge_result[ev["name"]])
+        for ev in evaluators
     ]
+
+    for row in evaluation_results:
+        for line in format_evaluation_result_lines(row):
+            log_and_print(line)
 
     return {
         "transcript": transcript,
@@ -528,12 +556,13 @@ def _save_transcript(output_dir: str | None, transcript: list[dict]) -> None:
 async def run_simulation_with_agent(
     agent: "TextAgentConnection",
     user_system_prompt: str,
-    evaluation_criteria: list[dict],
+    evaluators: list[dict],
     agent_speaks_first: bool = True,
     max_turns: int = DEFAULT_MAX_TURNS,
     user_model: str = "gpt-4.1",
     user_provider: str = "openai",
     output_dir: Optional[str] = None,
+    fallback_judge_model: str = DEFAULT_SIMULATION_JUDGE_MODEL,
 ) -> dict:
     """Run a text simulation where the agent is an external HTTP endpoint.
 
@@ -544,7 +573,7 @@ async def run_simulation_with_agent(
     Args:
         agent: External agent connection.
         user_system_prompt: System prompt for the simulated user.
-        evaluation_criteria: List of criteria dicts with ``name`` and ``description``.
+        evaluators: List of evaluator dicts with ``name`` and ``system_prompt``.
         agent_speaks_first: Whether the agent sends the first message. Default: True.
         max_turns: Maximum agent turns before ending. Default: 50.
         user_model: Model for the user simulator. Default: ``gpt-4.1``.
@@ -554,6 +583,8 @@ async def run_simulation_with_agent(
     Returns:
         dict with ``transcript`` and ``evaluation_results`` keys.
     """
+    require_simulation_evaluators(evaluators)
+
     from openai import AsyncOpenAI as _AsyncOpenAI
 
     # User LLM client
@@ -642,18 +673,20 @@ async def run_simulation_with_agent(
     _save_transcript(output_dir, transcript)
 
     log_and_print(
-        f"Evaluating the conversation based on the criteria:\n\n{evaluation_criteria}"
+        f"Evaluating the conversation against {len(evaluators)} evaluator(s)."
     )
-    llm_judge_result = await evaluate_simuation(transcript, evaluation_criteria)
+    llm_judge_result = await evaluate_simuation(
+        transcript, evaluators, fallback_model=fallback_judge_model
+    )
 
     evaluation_results = [
-        {
-            "name": criterion["name"],
-            "value": int(llm_judge_result[criterion["name"]]["match"]),
-            "reasoning": llm_judge_result[criterion["name"]]["reasoning"],
-        }
-        for criterion in evaluation_criteria
+        _build_evaluation_result(ev, llm_judge_result[ev["name"]])
+        for ev in evaluators
     ]
+
+    for row in evaluation_results:
+        for line in format_evaluation_result_lines(row):
+            log_and_print(line)
 
     return {
         "transcript": transcript,
@@ -735,12 +768,14 @@ async def run_single_simulation_task(
             log_and_print(f"\033[93mAgent Speaks First:\033[0m {agent_speaks_first}")
             log_and_print("--------------------------------")
 
+            evaluators = config.get("evaluators") or []
+
             try:
                 if agent is not None:
                     output = await run_simulation_with_agent(
                         agent=agent,
                         user_system_prompt=user_system_prompt,
-                        evaluation_criteria=config["evaluation_criteria"],
+                        evaluators=evaluators,
                         agent_speaks_first=agent_speaks_first,
                         max_turns=config.get("settings", {}).get(
                             "max_turns", DEFAULT_MAX_TURNS
@@ -755,7 +790,7 @@ async def run_single_simulation_task(
                         + f"\n\nYou must always speak in {language}.",
                         tools=config["tools"],
                         user_system_prompt=user_system_prompt,
-                        evaluation_criteria=config["evaluation_criteria"],
+                        evaluators=evaluators,
                         bot_model=args.model,
                         user_model="gpt-4.1",
                         bot_provider=args.provider,
@@ -855,6 +890,12 @@ async def main():
     with open(args.config, "r") as f:
         config = json.load(f)
 
+    try:
+        require_simulation_evaluators(config.get("evaluators"))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
     output_dir = args.output_dir
 
     os.makedirs(output_dir, exist_ok=True)
@@ -909,14 +950,35 @@ async def main():
         for metric_dict in evaluation_results:
             metrics[metric_dict["name"]].append(float(metric_dict["value"]))
 
+    # Track criterion types and scale bounds per metric name
+    criterion_types: dict = {}
+    criterion_scales: dict = {}
+    for result in results:
+        if isinstance(result, Exception):
+            continue
+        _, evaluation_results = result
+        for metric_dict in evaluation_results:
+            criterion_types.setdefault(
+                metric_dict["name"], metric_dict.get("type", "binary")
+            )
+            if "scale_min" in metric_dict and "scale_max" in metric_dict:
+                criterion_scales.setdefault(
+                    metric_dict["name"],
+                    (int(metric_dict["scale_min"]), int(metric_dict["scale_max"])),
+                )
+
     metrics_summary = {}
 
     for metric_name, metric_values in metrics.items():
-        metrics_summary[metric_name] = {
+        entry = {
+            "type": criterion_types.get(metric_name, "binary"),
             "mean": np.mean(metric_values),
             "std": np.std(metric_values),
             "values": metric_values,
         }
+        if metric_name in criterion_scales:
+            entry["scale_min"], entry["scale_max"] = criterion_scales[metric_name]
+        metrics_summary[metric_name] = entry
 
     df = pd.DataFrame(all_simulation_metrics)
     df.to_csv(join(output_dir, "results.csv"), index=False)

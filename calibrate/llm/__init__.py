@@ -35,7 +35,7 @@ Library Usage:
         tools=[...],
         personas=[...],
         scenarios=[...],
-        evaluation_criteria=[...],
+        evaluators=[...],
         output_dir="./out",
         models=["gpt-4.1", "claude-3.5-sonnet"],
         provider="openrouter"
@@ -47,7 +47,7 @@ Library Usage:
         tools=[...],
         personas=[...],
         scenarios=[...],
-        evaluation_criteria=[...],
+        evaluators=[...],
         output_dir="./out",
         model="gpt-4.1",
         provider="openrouter"
@@ -82,9 +82,15 @@ class _Tests:
         provider: str,
         run_name: Optional[str] = None,
         agent: Optional["TextAgentConnection"] = None,
+        evaluators: Optional[List[dict]] = None,
     ) -> dict:
         """Run tests for a single model (or external agent)."""
-        from calibrate.llm.run_tests import run_test as _run_test, run_test_external as _run_test_external
+        from calibrate.llm.run_tests import (
+            run_test as _run_test,
+            run_test_external as _run_test_external,
+            _build_evaluators_registry,
+            _resolve_evaluators_for_test_case,
+        )
         from calibrate.utils import configure_print_logger, log_and_print
 
         # Create output directory
@@ -124,32 +130,41 @@ class _Tests:
         # Pass model name to agent for benchmark routing; None for single runs.
         agent_model_hint: Optional[str] = model if (agent is not None and model) else None
 
+        evaluators_registry = _build_evaluators_registry({"evaluators": evaluators or []})
+
         for test_case_index, test_case in enumerate(test_cases):
+            evaluation = test_case["evaluation"]
+            resolved_evaluators = (
+                _resolve_evaluators_for_test_case(evaluation, evaluators_registry)
+                if evaluation.get("type") == "response"
+                else None
+            )
             if agent is not None:
                 result = await _run_test_external(
                     chat_history=test_case["history"],
-                    evaluation=test_case["evaluation"],
+                    evaluation=evaluation,
                     agent=agent,
                     model=agent_model_hint,
+                    evaluators=resolved_evaluators,
                 )
             else:
-                agent_language = test_case.get("settings", {}).get("language", "english")
                 result = await _run_test(
                     chat_history=test_case["history"],
-                    evaluation=test_case["evaluation"],
-                    system_prompt=system_prompt
-                    + f"\n\nYou must always speak in {agent_language}.",
+                    evaluation=evaluation,
+                    system_prompt=system_prompt,
                     model=model,
                     provider=provider,
                     tools=tools,
+                    unique_id=run_name or "",
+                    evaluators=resolved_evaluators,
                 )
 
             if result["metrics"]["passed"]:
                 log_and_print(f"✅ Test case {test_case_index + 1} passed")
             else:
                 log_and_print(f"❌ Test case {test_case_index + 1} failed")
-                if "reasoning" in result["metrics"]:
-                    log_and_print(result["metrics"]["reasoning"])
+            if "reasoning" in result["metrics"]:
+                log_and_print(result["metrics"]["reasoning"])
 
             result["test_case"] = test_case
             results.append(result)
@@ -180,7 +195,13 @@ class _Tests:
         with open(os.path.join(final_output_dir, "results.json"), "w") as f:
             json.dump(results, f, indent=4)
 
-        metrics = {"total": total_tests, "passed": total_passed}
+        from calibrate.llm.run_tests import _aggregate_criteria, _aggregate_tool_calls
+        metrics = {
+            "total": total_tests,
+            "passed": total_passed,
+            "criteria": _aggregate_criteria(results, evaluators_registry),
+            "tool_calls": _aggregate_tool_calls(results),
+        }
         with open(os.path.join(final_output_dir, "metrics.json"), "w") as f:
             json.dump(metrics, f, indent=4)
 
@@ -204,6 +225,7 @@ class _Tests:
         run_name: Optional[str] = None,
         max_parallel: int = 2,
         agent: Optional["TextAgentConnection"] = None,
+        evaluators: Optional[List[dict]] = None,
     ) -> dict:
         """
         Run LLM tests with the given configuration.
@@ -216,7 +238,7 @@ class _Tests:
         ``agent`` is provided).
 
         Args:
-            test_cases: List of test case dicts, each containing 'history', 'evaluation', and optional 'settings'
+            test_cases: List of test case dicts, each containing 'history' and 'evaluation'
             system_prompt: System prompt for the LLM (ignored when agent is provided)
             tools: List of tool definitions available to the LLM (ignored when agent is provided)
             output_dir: Path to output directory for results (default: ./out)
@@ -227,6 +249,10 @@ class _Tests:
             max_parallel: Maximum number of models to run in parallel (default: 2)
             agent: Optional external agent connection. When provided, routes all
                 test cases to the external agent instead of an internal LLM.
+            evaluators: Optional list of evaluator dicts (each with ``name``,
+                ``system_prompt``, ``judge_model``, ``type``, ...). Each test
+                case's ``evaluation.criteria`` references these by name.
+                If omitted, the implicit default LLM-test evaluator is used.
 
         Returns:
             dict: Results containing test outcomes and metrics for all models
@@ -265,6 +291,7 @@ class _Tests:
                         provider=provider,
                         run_name=run_name,
                         agent=agent,
+                        evaluators=evaluators,
                     )
 
             results = await asyncio.gather(*[run_agent_model(m) for m in models])
@@ -282,6 +309,7 @@ class _Tests:
                 provider=provider,
                 run_name=run_name,
                 agent=agent,
+                evaluators=evaluators,
             )
 
         # If models list is provided, run in parallel
@@ -298,6 +326,7 @@ class _Tests:
                         model=m,
                         provider=provider,
                         run_name=run_name,
+                        evaluators=evaluators,
                     )
 
             tasks = [run_with_semaphore(m) for m in models]
@@ -329,6 +358,7 @@ class _Tests:
             model=model,
             provider=provider,
             run_name=run_name,
+            evaluators=evaluators,
         )
 
     @staticmethod
@@ -341,6 +371,7 @@ class _Tests:
         provider: Literal["openai", "openrouter"] = "openrouter",
         run_name: Optional[str] = None,
         agent: Optional["TextAgentConnection"] = None,
+        evaluators: Optional[List[dict]] = None,
     ) -> dict:
         """
         Run LLM tests for a single model or external agent (no leaderboard).
@@ -367,6 +398,7 @@ class _Tests:
             provider=provider,
             run_name=run_name,
             agent=agent,
+            evaluators=evaluators,
         )
 
     @staticmethod
@@ -394,22 +426,37 @@ class _Tests:
         model: str,
         provider: str,
         tools: List[dict] = None,
+        evaluators: Optional[List[dict]] = None,
     ) -> dict:
         """
         Run a single LLM test case.
 
         Args:
             chat_history: List of chat messages (role/content dicts)
-            evaluation: Evaluation criteria dict
+            evaluation: Evaluation dict with ``type`` and (for ``response``)
+                ``criteria`` referencing evaluators by name.
             system_prompt: System prompt for the LLM
             model: Model name
             provider: LLM provider
             tools: Optional list of tool definitions
+            evaluators: Optional list of evaluator dicts. If omitted, the
+                implicit default LLM-test evaluator is used.
 
         Returns:
             dict: Test result with output and metrics
         """
-        from calibrate.llm.run_tests import run_test as _run_test
+        from calibrate.llm.run_tests import (
+            run_test as _run_test,
+            _build_evaluators_registry,
+            _resolve_evaluators_for_test_case,
+        )
+
+        registry = _build_evaluators_registry({"evaluators": evaluators or []})
+        resolved_evaluators = (
+            _resolve_evaluators_for_test_case(evaluation, registry)
+            if evaluation.get("type") == "response"
+            else None
+        )
 
         return await _run_test(
             chat_history=chat_history,
@@ -418,6 +465,8 @@ class _Tests:
             model=model,
             provider=provider,
             tools=tools or [],
+            unique_id="",
+            evaluators=resolved_evaluators,
         )
 
     @staticmethod
@@ -461,7 +510,7 @@ class _Simulations:
         tools: List[dict],
         personas: List[dict],
         scenarios: List[dict],
-        evaluation_criteria: List[dict],
+        evaluators: List[dict],
         output_dir: str,
         model: str,
         provider: str,
@@ -478,7 +527,10 @@ class _Simulations:
                 a model-specific subfolder. Used by the single-model path in run()
                 for backward compatibility.
         """
+        from calibrate.judges import require_simulation_evaluators
         from calibrate.llm.run_simulation import run_single_simulation_task
+
+        require_simulation_evaluators(evaluators or [])
 
         # Create output directory — flat for single-model runs, model-scoped for benchmarks
         if _flat_output:
@@ -496,7 +548,7 @@ class _Simulations:
             "tools": tools,
             "personas": personas,
             "scenarios": scenarios,
-            "evaluation_criteria": evaluation_criteria,
+            "evaluators": evaluators or [],
             "settings": {
                 "agent_speaks_first": agent_speaks_first,
                 "max_turns": max_turns,
@@ -536,6 +588,8 @@ class _Simulations:
 
         # Collect metrics
         metrics_by_criterion = defaultdict(list)
+        criterion_types: dict = {}  # name -> "binary" | "rating"
+        criterion_scales: dict = {}  # name -> (scale_min, scale_max) for ratings
         all_simulation_metrics = []
 
         for result in results:
@@ -551,15 +605,32 @@ class _Simulations:
                     metrics_by_criterion[eval_result["name"]].append(
                         float(eval_result["value"])
                     )
+                    criterion_types.setdefault(
+                        eval_result["name"], eval_result.get("type", "binary")
+                    )
+                    if "scale_min" in eval_result and "scale_max" in eval_result:
+                        criterion_scales.setdefault(
+                            eval_result["name"],
+                            (
+                                int(eval_result["scale_min"]),
+                                int(eval_result["scale_max"]),
+                            ),
+                        )
 
         # Compute summary
         metrics_summary = {}
         for criterion_name, values in metrics_by_criterion.items():
-            metrics_summary[criterion_name] = {
+            entry = {
+                "type": criterion_types.get(criterion_name, "binary"),
                 "mean": float(np.mean(values)),
                 "std": float(np.std(values)),
                 "values": values,
             }
+            if criterion_name in criterion_scales:
+                entry["scale_min"], entry["scale_max"] = criterion_scales[
+                    criterion_name
+                ]
+            metrics_summary[criterion_name] = entry
 
         # Save results
         if all_simulation_metrics:
@@ -580,7 +651,7 @@ class _Simulations:
     async def run(
         personas: List[dict],
         scenarios: List[dict],
-        evaluation_criteria: List[dict],
+        evaluators: List[dict],
         system_prompt: str = "",
         tools: List[dict] = None,
         output_dir: str = "./out",
@@ -603,7 +674,9 @@ class _Simulations:
         Args:
             personas: List of persona dicts with 'characteristics', 'gender', 'language'
             scenarios: List of scenario dicts with 'description'
-            evaluation_criteria: List of criteria dicts with 'name' and 'description'
+            evaluators: List of evaluator dicts with 'name', 'system_prompt',
+                'judge_model', and optional 'type'/'scale_min'/'scale_max'.
+                At least one evaluator is required (simulations have no implicit default).
             system_prompt: System prompt for the bot/agent (ignored when agent is provided)
             tools: List of tool definitions available to the agent (ignored when agent is provided)
             output_dir: Path to output directory for results (default: ./out)
@@ -628,7 +701,7 @@ class _Simulations:
             ...     tools=[...],
             ...     personas=[...],
             ...     scenarios=[...],
-            ...     evaluation_criteria=[...],
+            ...     evaluators=[...],
             ...     model="gpt-4.1"
             ... ))
             >>> # External agent
@@ -637,7 +710,7 @@ class _Simulations:
             ...     agent=TextAgentConnection(url="https://your-agent.com/chat"),
             ...     personas=[...],
             ...     scenarios=[...],
-            ...     evaluation_criteria=[...],
+            ...     evaluators=[...],
             ... ))
         """
         tools = tools or []
@@ -650,7 +723,7 @@ class _Simulations:
                 tools=tools,
                 personas=personas,
                 scenarios=scenarios,
-                evaluation_criteria=evaluation_criteria,
+                evaluators=evaluators,
                 output_dir=output_dir,
                 model=model,
                 provider=provider,
@@ -671,7 +744,7 @@ class _Simulations:
                         tools=tools,
                         personas=personas,
                         scenarios=scenarios,
-                        evaluation_criteria=evaluation_criteria,
+                        evaluators=evaluators,
                         output_dir=output_dir,
                         model=m,
                         provider=provider,
@@ -706,7 +779,7 @@ class _Simulations:
             tools=tools,
             personas=personas,
             scenarios=scenarios,
-            evaluation_criteria=evaluation_criteria,
+            evaluators=evaluators,
             output_dir=output_dir,
             model=model,
             provider=provider,
@@ -720,7 +793,7 @@ class _Simulations:
     async def run_single(
         personas: List[dict],
         scenarios: List[dict],
-        evaluation_criteria: List[dict],
+        evaluators: List[dict],
         system_prompt: str = "",
         tools: List[dict] = None,
         output_dir: str = "./out",
@@ -737,7 +810,7 @@ class _Simulations:
         Args:
             personas: List of persona dicts with 'characteristics', 'gender', 'language'
             scenarios: List of scenario dicts with 'description'
-            evaluation_criteria: List of criteria dicts with 'name' and 'description'
+            evaluators: List of evaluator dicts (top-level); at least one is required.
             system_prompt: System prompt for the bot/agent (ignored when agent is provided)
             tools: List of tool definitions available to the agent (ignored when agent is provided)
             output_dir: Path to output directory for results (default: ./out)
@@ -756,7 +829,7 @@ class _Simulations:
             tools=tools or [],
             personas=personas,
             scenarios=scenarios,
-            evaluation_criteria=evaluation_criteria,
+            evaluators=evaluators,
             output_dir=output_dir,
             model=model,
             provider=provider,
@@ -788,7 +861,7 @@ class _Simulations:
         bot_system_prompt: str,
         tools: List[dict],
         user_system_prompt: str,
-        evaluation_criteria: List[dict],
+        evaluators: List[dict],
         bot_model: str = "gpt-4.1",
         user_model: str = "gpt-4.1",
         bot_provider: str = "openai",
@@ -804,7 +877,7 @@ class _Simulations:
             bot_system_prompt: System prompt for the bot/agent
             tools: List of tool definitions available to the bot
             user_system_prompt: System prompt for the simulated user
-            evaluation_criteria: List of evaluation criteria dicts
+            evaluators: List of evaluator dicts (top-level); at least one is required.
             bot_model: Model name for the bot
             user_model: Model name for the simulated user
             bot_provider: LLM provider for the bot
@@ -822,7 +895,7 @@ class _Simulations:
             bot_system_prompt=bot_system_prompt,
             tools=tools,
             user_system_prompt=user_system_prompt,
-            evaluation_criteria=evaluation_criteria,
+            evaluators=evaluators,
             bot_model=bot_model,
             user_model=user_model,
             bot_provider=bot_provider,

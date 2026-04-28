@@ -1,6 +1,8 @@
 import asyncio
 import argparse
+import re
 import uuid
+from collections import defaultdict
 from typing import List, Optional, TYPE_CHECKING
 from loguru import logger
 
@@ -37,9 +39,84 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.openrouter.llm import OpenRouterLLMService
 from pipecat.observers.loggers.llm_log_observer import LLMLogObserver
-from calibrate.llm.metrics import test_response_llm_judge
+from calibrate.llm.metrics import test_response_llm_judge, DEFAULT_JUDGE_MODEL
+from calibrate.judges import (
+    DEFAULT_LLM_TEST_EVALUATOR,
+    is_rating,
+    render_evaluator,
+)
 
 from calibrate.langfuse import observe, langfuse, langfuse_enabled
+
+
+# ── Evaluator resolution helpers (LLM-test-specific) ────────────────────────
+
+
+def _normalize_criteria_refs(criteria) -> list[dict]:
+    """Coerce a test case's ``evaluation.criteria`` into a list of evaluator refs.
+
+    Accepted shapes:
+    - ``str``                     → ``[{"name": <DEFAULT_LLM_TEST_EVALUATOR.name>, "arguments": {"criteria": <str>}}]``
+    - ``list[{name, arguments}]`` → returned as-is
+
+    Any other shape raises ``ValueError``.
+    """
+    if isinstance(criteria, str):
+        return [
+            {
+                "name": DEFAULT_LLM_TEST_EVALUATOR["name"],
+                "arguments": {"criteria": criteria},
+            }
+        ]
+    if isinstance(criteria, list):
+        for entry in criteria:
+            if not isinstance(entry, dict) or "name" not in entry:
+                raise ValueError(
+                    "evaluation.criteria entries must be dicts with a 'name' key "
+                    "(and optional 'arguments'); got: " + repr(entry)
+                )
+        return criteria
+    raise ValueError(
+        f"evaluation.criteria must be a string or list of evaluator refs; got {type(criteria).__name__}"
+    )
+
+
+def _build_evaluators_registry(config: dict) -> dict:
+    """Return ``{name: evaluator_dict}`` from top-level ``config.evaluators``.
+
+    The implicit default LLM-test evaluator is always registered first under
+    its canonical name (``DEFAULT_LLM_TEST_EVALUATOR["name"]``) and also under
+    the legacy alias ``"default"`` so older configs that reference
+    ``{"name": "default"}`` keep working. User-supplied evaluators with the
+    same name override either entry.
+    """
+    registry: dict = {DEFAULT_LLM_TEST_EVALUATOR["name"]: DEFAULT_LLM_TEST_EVALUATOR}
+    # Legacy alias for back-compat: pre-rename, the implicit default was named "default".
+    registry["default"] = DEFAULT_LLM_TEST_EVALUATOR
+    for ev in config.get("evaluators") or []:
+        if "name" not in ev or "system_prompt" not in ev:
+            raise ValueError(
+                "Each evaluator in config.evaluators must include 'name' and "
+                "'system_prompt' (got: " + repr(ev) + ")"
+            )
+        registry[ev["name"]] = ev
+    return registry
+
+
+def _resolve_evaluators_for_test_case(evaluation: dict, registry: dict) -> list[dict]:
+    """Resolve a test case's ``evaluation.criteria`` to rendered evaluator dicts."""
+    refs = _normalize_criteria_refs(evaluation.get("criteria"))
+    rendered: list[dict] = []
+    for ref in refs:
+        name = ref["name"]
+        if name not in registry:
+            raise ValueError(
+                f"Unknown evaluator '{name}' referenced in test case. Define "
+                f"it under config.evaluators (or use "
+                f"'{DEFAULT_LLM_TEST_EVALUATOR['name']}')."
+            )
+        rendered.append(render_evaluator(registry[name], ref.get("arguments")))
+    return rendered
 
 
 class Processor(FrameProcessor):
@@ -110,6 +187,42 @@ class LLMInferenceError(Exception):
 import threading
 
 _logger_lock = threading.Lock()
+
+
+# Strip ANSI color codes when mirroring terminal output to results.log
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def display_label(provider: str, model: str) -> str:
+    """Format a ``provider/model`` display label, dropping the redundant
+    ``openrouter/`` prefix when the provider is OpenRouter.
+
+    OpenRouter model ids are themselves namespaced ``<actual_provider>/<model>``
+    (e.g. ``openai/gpt-4.1``), so prefixing them with ``openrouter/`` produces
+    awkward chains like ``openrouter/openai/gpt-4.1``. For any other provider
+    (e.g. ``openai``) the label is the standard ``provider/model``.
+    """
+    if provider == "openrouter":
+        return model
+    return f"{provider}/{model}"
+
+
+def _print_and_log(text: str, log_path: Optional[str]) -> None:
+    """Print ``text`` to stdout and append the ANSI-stripped form to ``log_path``.
+
+    Used by :func:`run_model_tests` so the per-model ``results.log`` mirrors
+    everything that's shown live in the terminal (model header, per-test-case
+    pass/fail lines with provider/model prefix, and the final summary banner)
+    instead of being a separately-formatted, stripped-down recap.
+
+    Models run in parallel but each writes to its own ``results.log`` path,
+    so plain append-mode-per-call is safe; tests within a model run
+    sequentially so writes within a file are ordered.
+    """
+    print(text, flush=True)
+    if log_path:
+        with open(log_path, "a") as f:
+            f.write(_ANSI_RE.sub("", text) + "\n")
 
 
 async def run_inference(
@@ -359,6 +472,28 @@ def preprocess_conversation_history(
     return processed_history
 
 
+def _tool_call_pair_mismatch(
+    output_tool_call: dict, evaluation_tool_call: dict
+) -> Optional[str]:
+    """Return a failure reason string if the pair does not match, else ``None``."""
+    if output_tool_call["tool"] != evaluation_tool_call["tool"]:
+        return (
+            f"Tool call mismatch - expected tool call: {evaluation_tool_call['tool']} "
+            f"but got: {output_tool_call['tool']}"
+        )
+    if "arguments" not in evaluation_tool_call:
+        return None
+    if (
+        evaluation_tool_call["arguments"] is not None
+        and output_tool_call["arguments"] != evaluation_tool_call["arguments"]
+    ):
+        return (
+            f"Tool call arguments mismatch - expected arguments: "
+            f"{evaluation_tool_call['arguments']} but got: {output_tool_call['arguments']}"
+        )
+    return None
+
+
 def evaluate_tool_calls(output_tool_calls, evaluation_tool_calls):
     if not output_tool_calls:
         return {"passed": False, "reasoning": "No tool calls were generated by the LLM"}
@@ -369,29 +504,148 @@ def evaluate_tool_calls(output_tool_calls, evaluation_tool_calls):
     for output_tool_call, evaluation_tool_call in zip(
         output_tool_calls, evaluation_tool_calls
     ):
-        if output_tool_call["tool"] != evaluation_tool_call["tool"]:
-            return {
-                "passed": False,
-                "reasoning": f"Tool call mismatch - expected tool call: {evaluation_tool_call['tool']} but got: {output_tool_call['tool']}",
-            }
-
-        # if the "arguments" key is not present in the evaluation_tool_call, then we don't need to check the arguments
-        if "arguments" not in evaluation_tool_call:
-            continue
-
-        # if the "arguments" key is present in the evaluation_tool_call, then we need to check the arguments
-        if (
-            evaluation_tool_call["arguments"] is not None
-            and output_tool_call["arguments"] != evaluation_tool_call["arguments"]
-        ):
-            return {
-                "passed": False,
-                "reasoning": f"Tool call arguments mismatch - expected arguments: {evaluation_tool_call['arguments']} but got: {output_tool_call['arguments']}",
-            }
+        mismatch = _tool_call_pair_mismatch(
+            output_tool_call, evaluation_tool_call
+        )
+        if mismatch:
+            return {"passed": False, "reasoning": mismatch}
 
     return {
         "passed": True,
+        "reasoning": "Tool calls matched expected",
     }
+
+
+def _per_slot_tool_passes(
+    output_tool_calls: list, evaluation_tool_calls: Optional[list]
+) -> List[tuple]:
+    """For each expected tool slot (sorted), whether output matches at that index.
+
+    Aligns with :func:`evaluate_tool_calls` ordering and pairwise rules. Used for
+    per-tool leaderboard stats so a failing slot does not mark other tools wrong.
+    """
+    evaluation_tool_calls = sort_tool_calls(evaluation_tool_calls or [])
+    if not evaluation_tool_calls:
+        return []
+    if not output_tool_calls:
+        return [(tc["tool"], False) for tc in evaluation_tool_calls if tc.get("tool")]
+
+    output_tool_calls = sort_tool_calls(output_tool_calls)
+    out: List[tuple] = []
+    for i, evaluation_tool_call in enumerate(evaluation_tool_calls):
+        name = evaluation_tool_call.get("tool")
+        if not name:
+            continue
+        if i >= len(output_tool_calls):
+            out.append((name, False))
+        else:
+            out.append(
+                (
+                    name,
+                    _tool_call_pair_mismatch(
+                        output_tool_calls[i], evaluation_tool_call
+                    )
+                    is None,
+                )
+            )
+    return out
+
+
+def _no_response_judge_results(evaluators: List[dict], reasoning: str) -> dict:
+    """Build judge_results entries for the case where no response was produced.
+
+    Each response-type evaluator that was supposed to grade the reply is
+    recorded as ``match=False`` for binary evaluators, or as the evaluator's
+    ``scale_min`` (the lowest valid rating) for rating evaluators. Anchoring
+    rating fallbacks at ``scale_min`` keeps the value inside the evaluator's
+    declared range so downstream mean/min aggregates aren't skewed below the
+    scale (e.g. dragging a 1-5 rating's mean toward 0).
+    """
+    judge_results: dict = {}
+    for ev in evaluators or []:
+        name = ev.get("name")
+        if not name:
+            continue
+        if is_rating(ev):
+            try:
+                fallback_score = int(ev["scale_min"])
+            except (KeyError, TypeError, ValueError):
+                fallback_score = 0
+            judge_results[name] = {
+                "reasoning": reasoning,
+                "score": fallback_score,
+            }
+        else:
+            judge_results[name] = {"reasoning": reasoning, "match": False}
+    return judge_results
+
+
+def _evaluator_passed(evaluator: dict, ev_result: dict) -> bool:
+    """Return whether a single evaluator's result passes.
+
+    - binary  → ``match is True``
+    - rating  → ``score == scale_max`` (anything below the top of the scale fails)
+
+    Used to compute the test-case-level ``passed`` flag as the AND of every
+    referenced evaluator: any binary mismatch *or* any rating below its scale
+    max fails the whole case.
+    """
+    if is_rating(evaluator):
+        return int(ev_result["score"]) == int(evaluator["scale_max"])
+    return bool(ev_result["match"])
+
+
+async def _evaluate_response(
+    chat_history: List[dict],
+    response: str,
+    tool_calls: list,
+    evaluators: Optional[List[dict]],
+    fallback_judge_model: str,
+    no_response_reasoning_with_tool_calls: str,
+    no_response_reasoning_no_tool_calls: str,
+) -> dict:
+    """Evaluate a ``response``-type test case and build its ``metrics`` dict.
+
+    Shared by :func:`run_test` (internal LLM) and :func:`run_test_external`
+    (external agent) so the binary/rating pass logic, failing-evaluator
+    reasoning pickup, and empty-response fallback are defined in one place.
+    Each caller supplies its own no-response reasoning strings so user-facing
+    messages remain caller-specific (e.g. "the LLM" vs. "the external agent").
+
+    The test case passes only when every referenced evaluator passes (AND):
+    binary evaluators must match and rating evaluators must reach
+    ``scale_max``. See :func:`_evaluator_passed`.
+
+    Returns a dict with ``passed``, ``reasoning``, and ``judge_results``.
+    """
+    metrics: dict = {"passed": False}
+    if response:
+        evaluators = evaluators or []
+        result = await test_response_llm_judge(
+            conversation=chat_history,
+            response=response,
+            evaluators=evaluators,
+            fallback_model=fallback_judge_model,
+        )
+        metrics["judge_results"] = result
+        failing = [
+            ev for ev in evaluators if not _evaluator_passed(ev, result[ev["name"]])
+        ]
+        metrics["passed"] = not failing
+        if failing:
+            metrics["reasoning"] = result[failing[0]["name"]]["reasoning"]
+        else:
+            metrics["reasoning"] = "All evaluators passed"
+    else:
+        if tool_calls:
+            metrics["reasoning"] = no_response_reasoning_with_tool_calls
+        else:
+            metrics["reasoning"] = no_response_reasoning_no_tool_calls
+
+        metrics["judge_results"] = _no_response_judge_results(
+            evaluators or [], metrics["reasoning"]
+        )
+    return metrics
 
 
 @observe(name="llm_test", capture_input=False, capture_output=False)
@@ -403,6 +657,8 @@ async def run_test(
     provider: str,
     tools: List[dict[str, str]],
     unique_id: str,
+    evaluators: Optional[List[dict]] = None,
+    fallback_judge_model: str = DEFAULT_JUDGE_MODEL,
 ):
     output = await run_inference(
         chat_history=chat_history,
@@ -422,26 +678,20 @@ async def run_test(
             f"LLM inference failed - no response or tool calls returned. {error_details}"
         )
 
-    metrics = {"passed": False}
-
     if evaluation["type"] == "tool_call":
         metrics = evaluate_tool_calls(output["tool_calls"], evaluation["tool_calls"])
     elif evaluation["type"] == "response":
-        if output["response"]:
-            result = await test_response_llm_judge(
-                conversation=chat_history,
-                response=output["response"],
-                criteria=evaluation["criteria"],
-            )
-            metrics["passed"] = result["match"]
-            metrics["reasoning"] = result["reasoning"]
-        else:
-            if output["tool_calls"]:
-                metrics["reasoning"] = (
-                    f"The LLM generated tool calls: {output['tool_calls']}, but no reply was generated"
-                )
-            else:
-                metrics["reasoning"] = "No reply was generated by the LLM"
+        metrics = await _evaluate_response(
+            chat_history=chat_history,
+            response=output["response"],
+            tool_calls=output["tool_calls"],
+            evaluators=evaluators,
+            fallback_judge_model=fallback_judge_model,
+            no_response_reasoning_with_tool_calls=(
+                f"The LLM generated tool calls: {output['tool_calls']}, but no reply was generated"
+            ),
+            no_response_reasoning_no_tool_calls="No reply was generated by the LLM",
+        )
     else:
         raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
 
@@ -476,6 +726,8 @@ async def run_test_external(
     evaluation: dict,
     agent,
     model: Optional[str] = None,
+    evaluators: Optional[List[dict]] = None,
+    fallback_judge_model: str = DEFAULT_JUDGE_MODEL,
 ) -> dict:
     """Run a single LLM test case against an external text agent.
 
@@ -498,26 +750,20 @@ async def run_test_external(
     response = output.get("response")
     tool_calls = output.get("tool_calls", [])
 
-    metrics = {"passed": False}
-
     if evaluation["type"] == "tool_call":
         metrics = evaluate_tool_calls(tool_calls, evaluation["tool_calls"])
     elif evaluation["type"] == "response":
-        if response:
-            result = await test_response_llm_judge(
-                conversation=chat_history,
-                response=response,
-                criteria=evaluation["criteria"],
-            )
-            metrics["passed"] = result["match"]
-            metrics["reasoning"] = result["reasoning"]
-        else:
-            if tool_calls:
-                metrics["reasoning"] = (
-                    f"The agent made tool calls {tool_calls} but returned no text response"
-                )
-            else:
-                metrics["reasoning"] = "No reply was returned by the external agent"
+        metrics = await _evaluate_response(
+            chat_history=chat_history,
+            response=response,
+            tool_calls=tool_calls,
+            evaluators=evaluators,
+            fallback_judge_model=fallback_judge_model,
+            no_response_reasoning_with_tool_calls=(
+                f"The agent made tool calls {tool_calls} but returned no text response"
+            ),
+            no_response_reasoning_no_tool_calls="No reply was returned by the external agent",
+        )
     else:
         raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
 
@@ -525,6 +771,111 @@ async def run_test_external(
         "output": {"response": response, "tool_calls": tool_calls},
         "metrics": metrics,
     }
+
+
+def _aggregate_criteria(results: List[dict], evaluators_registry: dict) -> dict:
+    """Aggregate per-evaluator metrics across test case results.
+
+    Each response-type test case contributes to the totals for the evaluators
+    referenced in its ``evaluation.criteria``. ``evaluators_registry`` is the
+    full ``{name: evaluator}`` dict used to resolve type/scale info.
+
+    Per-evaluator output shape depends on the evaluator's type:
+    - binary: ``{"type": "binary", "passed": int, "total": int, "pass_rate": float}``
+    - rating: ``{"type": "rating", "mean": float, "min": int, "max": int,
+                  "count": int, "scale_min": int, "scale_max": int}``
+    """
+    binary_totals: defaultdict = defaultdict(lambda: {"passed": 0, "total": 0})
+    rating_scores: defaultdict = defaultdict(list)
+    rating_scale: dict = {}
+
+    for result in results:
+        metrics = result.get("metrics", {})
+        evaluation = result.get("test_case", {}).get("evaluation", {})
+
+        if evaluation.get("type") != "response":
+            continue
+
+        judge_results = metrics.get("judge_results")
+        if not judge_results:
+            continue
+
+        refs = _normalize_criteria_refs(evaluation.get("criteria"))
+        for ref in refs:
+            name = ref["name"]
+            ev = evaluators_registry.get(name)
+            if ev is None:
+                continue
+            ev_data = judge_results.get(name, {})
+            if is_rating(ev):
+                if "score" in ev_data:
+                    rating_scores[name].append(int(ev_data["score"]))
+                    rating_scale[name] = (
+                        int(ev["scale_min"]),
+                        int(ev["scale_max"]),
+                    )
+            else:
+                binary_totals[name]["total"] += 1
+                if ev_data.get("match"):
+                    binary_totals[name]["passed"] += 1
+
+    aggregated: dict = {}
+    for name, c in binary_totals.items():
+        aggregated[name] = {
+            "type": "binary",
+            "passed": c["passed"],
+            "total": c["total"],
+            "pass_rate": (c["passed"] / c["total"]) * 100 if c["total"] else 0.0,
+        }
+    for name, scores in rating_scores.items():
+        lo, hi = rating_scale[name]
+        aggregated[name] = {
+            "type": "rating",
+            "mean": float(sum(scores) / len(scores)) if scores else 0.0,
+            "min": min(scores) if scores else 0,
+            "max": max(scores) if scores else 0,
+            "count": len(scores),
+            "scale_min": lo,
+            "scale_max": hi,
+        }
+    return aggregated
+
+
+def _aggregate_tool_calls(results: List[dict]) -> dict:
+    """Aggregate per-tool pass rates across tool_call-type test case results.
+
+    Each expected tool slot (same sort order as :func:`evaluate_tool_calls`) adds
+    one to that tool's ``total``; ``passed`` increments only when the output
+    matches at that index (tool name and optional arguments), not from the
+    case-level ``metrics.passed`` flag.
+
+    Per-tool output shape: ``{"passed": int, "total": int, "pass_rate": float}``.
+    """
+    totals: defaultdict = defaultdict(lambda: {"passed": 0, "total": 0})
+
+    for result in results:
+        evaluation = result.get("test_case", {}).get("evaluation", {})
+
+        if evaluation.get("type") != "tool_call":
+            continue
+
+        output = result.get("output") or {}
+        output_tool_calls = output.get("tool_calls") or []
+        for name, slot_passed in _per_slot_tool_passes(
+            output_tool_calls, evaluation.get("tool_calls")
+        ):
+            totals[name]["total"] += 1
+            if slot_passed:
+                totals[name]["passed"] += 1
+
+    aggregated: dict = {}
+    for name, c in totals.items():
+        aggregated[name] = {
+            "passed": c["passed"],
+            "total": c["total"],
+            "pass_rate": (c["passed"] / c["total"]) * 100 if c["total"] else 0.0,
+        }
+    return aggregated
 
 
 async def run_model_tests(
@@ -561,41 +912,60 @@ async def run_model_tests(
     if exists(print_log_save_path):
         os.remove(print_log_save_path)
 
-    # Print model header
-    print(f"\n\033[94m{'='*60}\033[0m")
-    print(f"\033[94mModel: {provider}/{model}\033[0m")
-    print(f"\033[94m{'='*60}\033[0m\n")
+    label = display_label(provider, model)
+
+    # Print model header (mirrored to results.log)
+    _print_and_log(f"\n\033[94m{'='*60}\033[0m", print_log_save_path)
+    _print_and_log(f"\033[94mModel: {label}\033[0m", print_log_save_path)
+    _print_and_log(f"\033[94m{'='*60}\033[0m\n", print_log_save_path)
 
     results = []
     results_file_path = join(model_output_dir, "results.json")
 
     unique_id = str(uuid.uuid4())
 
-    for test_case_index, test_case in enumerate(config["test_cases"]):
-        agent_language = test_case.get("settings", {}).get("language", "english")
+    evaluators_registry = _build_evaluators_registry(config)
 
+    for test_case_index, test_case in enumerate(config["test_cases"]):
         # Preprocess conversation history to add tool responses for non-webhook tools
         preprocessed_history = preprocess_conversation_history(
             test_case["history"], config["tools"]
         )
 
+        # Resolve evaluators for response-type evaluations only
+        evaluation = test_case["evaluation"]
+        resolved_evaluators = (
+            _resolve_evaluators_for_test_case(evaluation, evaluators_registry)
+            if evaluation.get("type") == "response"
+            else None
+        )
+
         result = await run_test(
             chat_history=preprocessed_history,
-            evaluation=test_case["evaluation"],
-            system_prompt=config["system_prompt"]
-            + f"\n\nYou must always speak in {agent_language}.",
+            evaluation=evaluation,
+            system_prompt=config["system_prompt"],
             model=model,
             provider=provider,
             tools=config["tools"],
             unique_id=unique_id,
+            evaluators=resolved_evaluators,
         )
 
         if result["metrics"]["passed"]:
-            print(f"[{provider}/{model}] ✅ Test case {test_case_index + 1} passed")
+            _print_and_log(
+                f"[{label}] ✅ Test case {test_case_index + 1} passed",
+                print_log_save_path,
+            )
         else:
-            print(f"[{provider}/{model}] ❌ Test case {test_case_index + 1} failed")
-            if "reasoning" in result["metrics"]:
-                print(f"  Reason: {result['metrics']['reasoning']}")
+            _print_and_log(
+                f"[{label}] ❌ Test case {test_case_index + 1} failed",
+                print_log_save_path,
+            )
+        if "reasoning" in result["metrics"]:
+            _print_and_log(
+                f"  Reason: {result['metrics']['reasoning']}",
+                print_log_save_path,
+            )
 
         result["test_case"] = test_case
         results.append(result)
@@ -609,14 +979,15 @@ async def run_model_tests(
     passed_count = total_passed
     failed_count = total_tests - total_passed
 
-    # Print summary for this model
+    # Print summary for this model (mirrored to results.log)
     if passed_count == total_tests:
-        print(f"[{provider}/{model}] 🎉 All tests passed!")
+        _print_and_log(f"[{label}] 🎉 All tests passed!", print_log_save_path)
     elif failed_count == total_tests:
-        print(f"[{provider}/{model}] ❌ All tests failed!")
+        _print_and_log(f"[{label}] ❌ All tests failed!", print_log_save_path)
     else:
-        print(
-            f"[{provider}/{model}] ✅ Total Passed: {passed_count}/{total_tests} ({(passed_count/total_tests)*100:.1f}%)"
+        _print_and_log(
+            f"[{label}] ✅ Total Passed: {passed_count}/{total_tests} ({(passed_count/total_tests)*100:.1f}%)",
+            print_log_save_path,
         )
 
     with open(join(model_output_dir, "results.json"), "w") as f:
@@ -625,6 +996,8 @@ async def run_model_tests(
     metrics = {
         "total": total_tests,
         "passed": passed_count,
+        "criteria": _aggregate_criteria(results, evaluators_registry),
+        "tool_calls": _aggregate_tool_calls(results),
     }
 
     with open(join(model_output_dir, "metrics.json"), "w") as f:
@@ -633,17 +1006,6 @@ async def run_model_tests(
     # Remove pipecat log file sink
     with _logger_lock:
         logger.remove(log_sink_id)
-
-    # Write to log file
-    with open(print_log_save_path, "w") as f:
-        for result in results:
-            if result["metrics"]["passed"]:
-                f.write(f"✅ Test case passed\n")
-            else:
-                f.write(f"❌ Test case failed\n")
-                if "reasoning" in result["metrics"]:
-                    f.write(f"  Reason: {result['metrics']['reasoning']}\n")
-        f.write(f"\nTotal Passed: {passed_count}/{total_tests}\n")
 
     return {
         "model": model,
@@ -698,7 +1060,7 @@ async def main():
 
     print("\n\033[91mLLM Tests\033[0m\n")
     print(f"Config: {args.config}")
-    print(f"Model: {args.provider}/{model}")
+    print(f"Model: {display_label(args.provider, model)}")
     print(f"Provider: {args.provider}")
     print("")
 
@@ -720,9 +1082,7 @@ async def main():
     passed = result["metrics"]["passed"]
     total = result["metrics"]["total"]
     pct = (passed / total * 100) if total > 0 else 0
-    print(
-        f"  {result['provider']}/{result['model']}: {passed}/{total} ({pct:.1f}%)"
-    )
+    print(f"  {result['provider']}/{result['model']}: {passed}/{total} ({pct:.1f}%)")
 
 
 if __name__ == "__main__":

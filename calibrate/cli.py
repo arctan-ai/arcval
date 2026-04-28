@@ -208,6 +208,13 @@ Examples:
         help="Generate leaderboard after evaluation (for single provider)",
     )
     stt_parser.add_argument("-s", "--save-dir", type=str)
+    stt_parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=None,
+        help="Path to optional JSON config file with judge settings (model, prompt)",
+    )
 
     # ── TTS ───────────────────────────────────────────────────────
     # `calibrate tts` with no args → interactive UI
@@ -236,6 +243,13 @@ Examples:
         help="Generate leaderboard after evaluation (for single provider)",
     )
     tts_parser.add_argument("-s", "--save-dir", type=str)
+    tts_parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=None,
+        help="Path to optional JSON config file with judge settings (model, prompt)",
+    )
 
     # ── LLM tests ───────────────────────────────────────────────
     # `calibrate llm` with no args → interactive UI
@@ -413,6 +427,8 @@ Examples:
                 argv.append("--overwrite")
             if args.save_dir:
                 argv.extend(["-s", args.save_dir])
+            if args.config:
+                argv.extend(["--config", args.config])
 
             sys.argv = argv
             asyncio.run(stt_benchmark_main())
@@ -434,6 +450,8 @@ Examples:
             argv.extend(["-dc", str(args.debug_count)])
             if args.overwrite:
                 argv.append("--overwrite")
+            if args.config:
+                argv.extend(["--config", args.config])
 
             sys.argv = argv
             asyncio.run(tts_benchmark_main())
@@ -502,6 +520,7 @@ Examples:
                                 test_cases=_config["test_cases"],
                                 output_dir=args.output_dir,
                                 models=[_m],
+                                evaluators=_config.get("evaluators"),
                             )
                         )
                         _model_results[_m] = _result.get(_m, _result)
@@ -521,6 +540,7 @@ Examples:
                             agent=_agent,
                             test_cases=_config["test_cases"],
                             output_dir=args.output_dir,
+                            evaluators=_config.get("evaluators"),
                         )
                     )
             else:
