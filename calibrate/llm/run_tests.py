@@ -44,6 +44,7 @@ from calibrate.judges import (
     DEFAULT_LLM_TEST_EVALUATOR,
     is_rating,
     render_evaluator,
+    require_unique_evaluator_names,
 )
 
 from calibrate.langfuse import observe, langfuse, langfuse_enabled
@@ -90,10 +91,24 @@ def _build_evaluators_registry(config: dict) -> dict:
     ``{"name": "default"}`` keep working. User-supplied evaluators with the
     same name override either entry.
     """
-    registry: dict = {DEFAULT_LLM_TEST_EVALUATOR["name"]: DEFAULT_LLM_TEST_EVALUATOR}
+    user_evaluators = config.get("evaluators") or []
+    require_unique_evaluator_names(user_evaluators)
+    # ``"default"`` is a legacy alias for the canonical default evaluator
+    # (``DEFAULT_LLM_TEST_EVALUATOR["name"]``). Defining both in the same
+    # config would resolve to two separate registry entries for the same
+    # logical evaluator — reject early.
+    _default_name = DEFAULT_LLM_TEST_EVALUATOR["name"]
+    _user_names = {ev.get("name") for ev in user_evaluators if isinstance(ev, dict)}
+    if "default" in _user_names and _default_name in _user_names:
+        raise ValueError(
+            f"config.evaluators defines both 'default' and '{_default_name}', "
+            f"which are aliases for the same default LLM-test evaluator. "
+            f"Define only one."
+        )
+    registry: dict = {_default_name: DEFAULT_LLM_TEST_EVALUATOR}
     # Legacy alias for back-compat: pre-rename, the implicit default was named "default".
     registry["default"] = DEFAULT_LLM_TEST_EVALUATOR
-    for ev in config.get("evaluators") or []:
+    for ev in user_evaluators:
         if "name" not in ev or "system_prompt" not in ev:
             raise ValueError(
                 "Each evaluator in config.evaluators must include 'name' and "

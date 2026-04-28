@@ -538,8 +538,40 @@ def format_conversation(conversation: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def require_unique_evaluator_names(evaluators: object) -> None:
+    """Raise ``ValueError`` if ``evaluators`` contains duplicate ``name`` values.
+
+    Downstream code (judge runners, metrics, leaderboard, UI) keys results by
+    ``evaluator["name"]``; duplicate names would silently collapse and only
+    the last entry's results would survive. Reject early with a clear error.
+
+    Accepts a non-list / empty / ``None`` input as a no-op so callers can
+    invoke this without first checking shape.
+    """
+    if not isinstance(evaluators, list):
+        return
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for ev in evaluators:
+        if not isinstance(ev, dict):
+            continue
+        name = ev.get("name")
+        if not isinstance(name, str):
+            continue
+        if name in seen and name not in duplicates:
+            duplicates.append(name)
+        seen.add(name)
+    if duplicates:
+        raise ValueError(
+            "Duplicate evaluator name(s) found: "
+            + ", ".join(repr(n) for n in duplicates)
+            + ". Each evaluator must have a unique `name`."
+        )
+
+
 def require_simulation_evaluators(evaluators: object) -> None:
-    """Raise ``ValueError`` unless ``evaluators`` is a non-empty list.
+    """Raise ``ValueError`` unless ``evaluators`` is a non-empty list with
+    unique names.
 
     Text and voice simulations do not inject implicit judges; config and SDK
     callers must provide at least one evaluator.
@@ -550,6 +582,7 @@ def require_simulation_evaluators(evaluators: object) -> None:
             "Simulation config must define a non-empty top-level `evaluators` "
             "(simulations have no implicit default)."
         )
+    require_unique_evaluator_names(evaluators)
 
 
 # ── Simulation judge (thin wrapper over text_judge) ─────────────────────────

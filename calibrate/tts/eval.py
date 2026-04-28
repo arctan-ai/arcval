@@ -34,6 +34,7 @@ from calibrate.tts.metrics import get_tts_llm_judge_score
 from calibrate.judges import (
     is_rating,
     DEFAULT_TTS_EVALUATOR,
+    require_unique_evaluator_names,
 )
 from calibrate.langfuse import (
     observe,
@@ -756,6 +757,7 @@ async def run_single_provider_eval(
         _evaluators = (
             judge_evaluators if judge_evaluators else [DEFAULT_TTS_EVALUATOR]
         )
+        require_unique_evaluator_names(_evaluators)
         llm_judge_results = await get_tts_llm_judge_score(
             all_audio_paths,
             all_texts,
