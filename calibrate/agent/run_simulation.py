@@ -1,3 +1,4 @@
+import aiohttp
 import asyncio
 import gc
 import json
@@ -56,6 +57,17 @@ DEFAULT_MAX_TURNS = 10
 DEFAULT_PORT = 8765
 DEFAULT_AGENT_SPEAKS_FIRST = True
 
+# Pipecat logs Google STT gRPC 409 (idle stream) at ERROR while reconnecting; that is
+# recoverable and must not trigger our error sink (which cancels the eval pipeline).
+_BENIGN_GOOGLE_STT_IDLE_TIMEOUT = (
+    "409 Stream timed out after receiving no more client requests"
+)
+
+
+def _is_benign_google_stt_idle_error(log_message: str) -> bool:
+    return "GoogleSTTService" in log_message and _BENIGN_GOOGLE_STT_IDLE_TIMEOUT in log_message
+
+
 # Create a contextual logger with EVAL prefix
 eval_logger = logger.bind(source="EVAL")
 
@@ -92,6 +104,7 @@ from pipecat.frames.frames import (
     OutputTransportMessageUrgentFrame,
     Frame,
     InterruptionFrame,
+    InterruptionTaskFrame,
     TTSStoppedFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
@@ -111,6 +124,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.processors.transcript_processor import TranscriptProcessor
 from pipecat.services.google.tts import GoogleTTSService
+from pipecat.services.elevenlabs.tts import ElevenLabsHttpTTSService
 
 # from pipecat.processors.transcript_processor import TranscriptProcessor
 # from pipecat.transports.daily.transport import DailyParams, DailyTransport
@@ -210,10 +224,12 @@ class RTVIMessageFrameAdapter(FrameProcessor):
         processing_time: defaultdict,
         output_dir: str,
         audio_save_dir: str,
+        agent_speaks_first: bool = True,
     ):
         super().__init__(enable_direct_mode=True, name="RTVIMessageFrameAdapter")
         self._context = context
         self._audio_buffer = audio_buffer
+        self._agent_speaks_first = agent_speaks_first
         self._interrupt_probability = interrupt_probability
         self._tool_calls = tool_calls
         self._output_dir = Path(output_dir)
@@ -222,12 +238,16 @@ class RTVIMessageFrameAdapter(FrameProcessor):
         self._stt_outputs = stt_outputs
         self._ttft = ttft
         self._processing_time = processing_time
-        self._text_buffer = ""  # buffer of the text that the bot has generated so far
+        self._text_buffer = ""  # buffer of the text that the bot has generated so far (received stream; used for interrupt completion matching)
+        self._heard_text_buffer = (
+            ""  # buffer of agent text actually spoken (fed to simulated-user STT as what was heard)
+        )
         self._spoken_text_buffer = (
             ""  # buffer of the text that the bot has spoken so far
         )
         self._is_bot_interrupt_decided = False  # whether the decision to interrupt the bot by the user has been made yet
         self._is_bot_interrupt_triggered = False  # whether the spoken text buffer is complete and matches the text buffer; only when this becomes true is when the intteruption actually triggered
+        self._pending_user_turn = False  # set True on bot-started-speaking; False on bot-stopped-speaking after frames are pushed
         self._turns_concluded = set()
         self._serialized_transcript = []  # Store transcripts for return
         self._ended_due_to_max_turns = False
@@ -237,6 +257,7 @@ class RTVIMessageFrameAdapter(FrameProcessor):
         concluded_turn = self._turn_index
         self._turns_concluded.add(concluded_turn)  # mark the turn as concluded
         self._text_buffer = ""
+        self._heard_text_buffer = ""
         self._spoken_text_buffer = ""
 
         # Save intermediate state after each turn
@@ -339,11 +360,19 @@ class RTVIMessageFrameAdapter(FrameProcessor):
         ) as transcripts_file:
             json.dump(transcript, transcripts_file, indent=4)
 
-    async def _save_intermediate_state(self, concluded_turn: int):
-        """Save intermediate transcript after the concluded turn."""
+    async def _save_intermediate_state(
+        self,
+        concluded_turn: Optional[int] = None,
+        *,
+        reason: Optional[str] = None,
+    ):
+        """Save intermediate transcript after a checkpoint (turn concluded or user stopped)."""
         transcript = self._build_serialized_transcript()
         self._save_transcript(transcript)
-        eval_logger.info(f"Saved intermediate transcript after turn {concluded_turn}")
+        if reason is not None:
+            eval_logger.info(reason)
+        elif concluded_turn is not None:
+            eval_logger.info(f"Saved intermediate transcript after turn {concluded_turn}")
 
     async def process_frame(self, frame, direction):
         await super().process_frame(frame, direction)
@@ -375,17 +404,23 @@ class RTVIMessageFrameAdapter(FrameProcessor):
 
                 if msg_type == "bot-started-speaking":
                     self._audio_buffer._reset_all_audio_buffers()
-                    self._turn_index += 1
-                    eval_logger.info(f"[rtvi] turn index: {self._turn_index}")
+                    if self._agent_speaks_first:
+                        self._turn_index += 1
+                        eval_logger.info(f"[rtvi] turn index: {self._turn_index}")
+                    self._pending_user_turn = True
+                    # The bot has the floor: stop the sim user's in-flight TTS
+                    # and flush its assistant aggregator so anything spoken so
+                    # far is committed as its own turn.
+                    await self.push_frame(
+                        InterruptionTaskFrame(), FrameDirection.UPSTREAM
+                    )
                     generated_frames.append(UserStartedSpeakingFrame())
-                elif (
-                    msg_type == "bot-stopped-speaking"
-                    and self._turn_index not in self._turns_concluded
-                ):
+                elif msg_type == "bot-stopped-speaking" and self._pending_user_turn:
+                    self._pending_user_turn = False
                     generated_frames.extend(
                         [
                             TranscriptionFrame(
-                                text=self._text_buffer,
+                                text=self._heard_text_buffer,
                                 user_id=user_id,
                                 timestamp=timestamp,
                                 result={},
@@ -400,6 +435,12 @@ class RTVIMessageFrameAdapter(FrameProcessor):
                     # interrupted anymore and spoken text buffer as not complete anymore
                     self._is_bot_interrupt_decided = False
                     self._is_bot_interrupt_triggered = False
+                    await self._save_intermediate_state(
+                        reason=(
+                            "Saved intermediate transcript after simulated user stopped speaking "
+                            f"(turn index {self._turn_index})"
+                        )
+                    )
 
                 elif msg_type == "bot-output":
                     text = data.get("text") or ""
@@ -428,6 +469,7 @@ class RTVIMessageFrameAdapter(FrameProcessor):
                                 # text buffer as complete and interrupt the bot by the simulated user
                                 if self._spoken_text_buffer == self._text_buffer:
                                     self._is_bot_interrupt_triggered = True
+                                    self._pending_user_turn = False
 
                                     await self.push_frame(
                                         OutputTransportMessageUrgentFrame(
@@ -457,41 +499,35 @@ class RTVIMessageFrameAdapter(FrameProcessor):
 
                                     await self._reset_buffers()
                             elif not spoken and not self._is_bot_interrupt_decided:
-                                # the text has been spoken by the bot yet and the decision to
-                                # interrupt the bot by the user has not been made yet
+                                # Received stream only (not yet spoken): track for interrupt
+                                # completion matching but do not feed STT — the simulated user
+                                # should only react to spoken audio.
                                 log_and_print(
                                     f"{PARTIAL_AGENT_MESSAGE_COLOR}Received agent message{RESET_COLOR}: {text}{RESET_COLOR}"
                                 )
                                 self._text_buffer += " " + text
-
+                            elif spoken and not self._is_bot_interrupt_decided:
+                                log_and_print(
+                                    f"{GENERAL_LOG_COLOR}Agent speaking the generated message: {text}{RESET_COLOR}"
+                                )
+                                self._heard_text_buffer += " " + text
                                 result_payload = data if data else None
 
-                                if (
-                                    np.random.rand() < self._interrupt_probability
-                                    and not self._is_bot_interrupt_decided
-                                ):
-                                    # decide to interrupt the bot by the simulated user based on whatever they have said so far
-                                    # the actual interruption will happen when the bot finishes speaking the text recorded so far
+                                if np.random.rand() < self._interrupt_probability:
                                     log_and_print(
                                         f"--------------------------------\n{INTERRUPTION_COLOR}[User interrupts the bot]{RESET_COLOR}\n--------------------------------"
                                     )
-
-                                    # mark the text collected so far as the text after which the user will interrupt the bot
-                                    # we still need to wait for the bot to finish speaking the text after which the user will interrupt the bot
                                     self._is_bot_interrupt_decided = True
+                                    # Align interrupt target with heard text only (received may run ahead of TTS).
+                                    self._text_buffer = self._heard_text_buffer
 
-                                # add the interim transcription frame for the text buffer as usual
                                 generated_frames.append(
                                     InterimTranscriptionFrame(
-                                        text=self._text_buffer,
+                                        text=self._heard_text_buffer,
                                         user_id=user_id,
                                         timestamp=timestamp,
                                         result=result_payload,
                                     )
-                                )
-                            elif spoken:
-                                log_and_print(
-                                    f"{GENERAL_LOG_COLOR}Agent speaking the generated message: {text}{RESET_COLOR}"
                                 )
 
                         else:
@@ -609,6 +645,34 @@ class IOLogger(FrameProcessor):
         if isinstance(frame, TTSTextFrame) and hasattr(frame, "text"):
             log_and_print(
                 f"{USER_MESSAGE_COLOR}[User]\033[0m: {frame.text}{RESET_COLOR}"
+            )
+
+        await self.push_frame(frame, direction)
+
+
+class SimulatedUserTurnIndexHook(FrameProcessor):
+    """Advances simulation turn index when the simulated user starts an LLM turn.
+
+    When the remote agent speaks first, turn index is advanced on
+    ``bot-started-speaking`` instead (see ``RTVIMessageFrameAdapter``). When the
+    simulated user speaks first, we advance here so user/bot audio chunks share
+    the same turn number for a round.
+    """
+
+    def __init__(self, rtvi_adapter: "RTVIMessageFrameAdapter"):
+        super().__init__(enable_direct_mode=True, name="SimulatedUserTurnIndexHook")
+        self._rtvi_adapter = rtvi_adapter
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+
+        if (
+            isinstance(frame, LLMFullResponseStartFrame)
+            and not self._rtvi_adapter._agent_speaks_first
+        ):
+            self._rtvi_adapter._turn_index += 1
+            eval_logger.info(
+                f"[sim user] turn index: {self._rtvi_adapter._turn_index}"
             )
 
         await self.push_frame(frame, direction)
@@ -856,7 +920,13 @@ async def run_simulation(
         nonlocal _error_triggered
         record = message.record
         if record["level"].name in ("ERROR", "CRITICAL"):
-            captured_errors.append(record["message"])
+            text = record["message"]
+            if _is_benign_google_stt_idle_error(text):
+                eval_logger.debug(
+                    "Skipping pipeline cancel for benign Google STT idle stream timeout",
+                )
+                return
+            captured_errors.append(text)
 
             # Cancel the pipeline task immediately on critical errors
             # so the simulation doesn't wait for idle timeout
@@ -981,18 +1051,20 @@ async def _run_simulation_inner(
         else Language.HI if language == "hindi" else Language.EN
     )
 
-    voice_name = "Zephyr" if gender == "female" else "Charon"
-    language_code = (
-        "hi-IN"
-        if language == "hindi"
-        else "kn-IN" if language == "kannada" else "en-US"
+    # ElevenLabs voice IDs for the simulated user. Word-level TTS so that
+    # mid-utterance interrupts commit only the words actually spoken.
+    voice_id = (
+        os.getenv("ELEVENLABS_VOICE_ID_FEMALE", "EXAVITQu4vr4xnSDxMaL")
+        if gender == "female"
+        else os.getenv("ELEVENLABS_VOICE_ID_MALE", "pNInz6obpgDQGcFmaJgB")
     )
-    voice_id = f"{language_code}-Chirp3-HD-{voice_name}"
-    eval_logger.info(f"Using voice ID: {voice_id}")
-    tts = GoogleTTSService(
+    eval_logger.info(f"Using ElevenLabs voice ID: {voice_id}")
+    elevenlabs_http_session = aiohttp.ClientSession()
+    tts = ElevenLabsHttpTTSService(
+        api_key=os.getenv("ELEVENLABS_API_KEY"),
         voice_id=voice_id,
-        params=GoogleTTSService.InputParams(language=tts_language),
-        credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+        aiohttp_session=elevenlabs_http_session,
+        params=ElevenLabsHttpTTSService.InputParams(language=tts_language),
     )
 
     llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-5.2")
@@ -1030,7 +1102,10 @@ async def _run_simulation_inner(
         processing_time,
         output_dir,
         audio_save_dir,
+        agent_speaks_first=agent_speaks_first,
     )
+
+    simulated_user_turn_index_hook = SimulatedUserTurnIndexHook(rtvi_message_adapter)
 
     metrics_logger = MetricsLogger(ttft, processing_time, context)
 
@@ -1062,6 +1137,7 @@ async def _run_simulation_inner(
             transcript.user(),
             context_aggregator.user(),  # User responses
             llm,  # LLM
+            simulated_user_turn_index_hook,
             max_turns_end_processor,  # Check and end after assistant processing if max_turns reached
             tts,  # TTS
             silence_padder,  # Add silence padding after TTS for STT flush
@@ -1158,7 +1234,10 @@ async def _run_simulation_inner(
 
     runner = PipelineRunner(handle_sigint=False)
 
-    await runner.run(task)
+    try:
+        await runner.run(task)
+    finally:
+        await elevenlabs_http_session.close()
 
     transcript = rtvi_message_adapter._serialized_transcript
 

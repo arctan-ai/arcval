@@ -42,6 +42,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.runner.types import RunnerArguments
@@ -343,7 +344,10 @@ async def run_bot(
     tools = ToolsSchema(standard_tools=standard_tools)
 
     context = LLMContext(messages, tools)
-    context_aggregator = LLMContextAggregatorPair(context)
+    context_aggregator = LLMContextAggregatorPair(
+        context,
+        user_params=LLMUserAggregatorParams(enable_emulated_vad_interruptions=True),
+    )
 
     rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
 
