@@ -1,6 +1,7 @@
 import asyncio
 import argparse
 import re
+import sys
 import uuid
 from collections import defaultdict
 from typing import List, Optional, TYPE_CHECKING
@@ -429,7 +430,7 @@ def get_webhook_tool_names(tools: List[dict]) -> set:
 
 
 def preprocess_conversation_history(
-    chat_history: List[dict], tools: List[dict]
+    chat_history: List[dict], tools: List[dict], strict: bool = True
 ) -> List[dict]:
     """
     Preprocess conversation history to add tool responses for non-webhook tools.
@@ -437,18 +438,27 @@ def preprocess_conversation_history(
     For non-webhook tools that have tool calls but no corresponding tool response,
     this function inserts a default tool response with {"status": "received"}.
 
-    For non-webhook tools that already have a tool response, this function raises
-    an error since tool responses should not be manually added for non-webhook tools.
+    Behavior when a non-webhook tool *already has* a tool response in the
+    conversation depends on ``strict``:
+
+    - ``strict=True`` (default; live test flow): raises ``ValueError``. The live
+      flow assumes structured-output tool responses come from inference, not
+      the dataset, so an existing one is treated as a config error.
+    - ``strict=False`` (eval-only flow): the existing response is left in place
+      and no injection occurs for that tool call. Eval-only datasets carry
+      real captured conversations, including their real tool responses.
 
     Args:
         chat_history: The conversation history to preprocess
         tools: List of tool definition dicts
+        strict: See above.
 
     Returns:
         Preprocessed conversation history with tool responses inserted
 
     Raises:
         ValueError: If a non-webhook tool has a manually added tool response
+            and ``strict=True``.
     """
     webhook_tool_names = get_webhook_tool_names(tools)
 
@@ -473,12 +483,15 @@ def preprocess_conversation_history(
                 if tool_name in webhook_tool_names:
                     continue
 
-                # Check if this non-webhook tool already has a response
+                # Existing response handling diverges by mode (see docstring).
                 if tool_call_id in existing_tool_response_ids:
-                    raise ValueError(
-                        f"Structured output tool '{tool_name}' (tool_call_id: {tool_call_id}) "
-                        f"should not have a manually added tool response in the conversation history. "
-                    )
+                    if strict:
+                        raise ValueError(
+                            f"Structured output tool '{tool_name}' (tool_call_id: {tool_call_id}) "
+                            f"should not have a manually added tool response in the conversation history. "
+                        )
+                    # Permissive mode: real response is already present; do nothing.
+                    continue
 
                 # Insert a default tool response for non-webhook tools
                 tool_response = {
@@ -672,6 +685,44 @@ async def _evaluate_response(
     return metrics
 
 
+async def evaluate_test_case_output(
+    chat_history: List[dict],
+    evaluation: dict,
+    output: dict,
+    evaluators: Optional[List[dict]] = None,
+    fallback_judge_model: str = DEFAULT_JUDGE_MODEL,
+    no_response_reasoning_with_tool_calls: Optional[str] = None,
+    no_response_reasoning_no_tool_calls: Optional[str] = None,
+) -> dict:
+    """Compute metrics for a test case given its (already produced) output.
+
+    Shared between live inference (``run_test`` / ``run_test_external``) and
+    eval-only mode where ``output`` is loaded from disk instead of generated.
+
+    ``output`` must contain ``response`` (str) and ``tool_calls`` (list).
+    """
+    if evaluation["type"] == "tool_call":
+        return evaluate_tool_calls(output["tool_calls"], evaluation["tool_calls"])
+    if evaluation["type"] == "response":
+        tool_calls = output["tool_calls"]
+        return await _evaluate_response(
+            chat_history=chat_history,
+            response=output["response"],
+            tool_calls=tool_calls,
+            evaluators=evaluators,
+            fallback_judge_model=fallback_judge_model,
+            no_response_reasoning_with_tool_calls=(
+                no_response_reasoning_with_tool_calls
+                or f"Tool calls were generated: {tool_calls}, but no reply was returned"
+            ),
+            no_response_reasoning_no_tool_calls=(
+                no_response_reasoning_no_tool_calls
+                or "No reply was returned"
+            ),
+        )
+    raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
+
+
 @observe(name="llm_test", capture_input=False, capture_output=False)
 async def run_test(
     chat_history: List[dict[str, str]],
@@ -702,22 +753,17 @@ async def run_test(
             f"LLM inference failed - no response or tool calls returned. {error_details}"
         )
 
-    if evaluation["type"] == "tool_call":
-        metrics = evaluate_tool_calls(output["tool_calls"], evaluation["tool_calls"])
-    elif evaluation["type"] == "response":
-        metrics = await _evaluate_response(
-            chat_history=chat_history,
-            response=output["response"],
-            tool_calls=output["tool_calls"],
-            evaluators=evaluators,
-            fallback_judge_model=fallback_judge_model,
-            no_response_reasoning_with_tool_calls=(
-                f"The LLM generated tool calls: {output['tool_calls']}, but no reply was generated"
-            ),
-            no_response_reasoning_no_tool_calls="No reply was generated by the LLM",
-        )
-    else:
-        raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
+    metrics = await evaluate_test_case_output(
+        chat_history=chat_history,
+        evaluation=evaluation,
+        output=output,
+        evaluators=evaluators,
+        fallback_judge_model=fallback_judge_model,
+        no_response_reasoning_with_tool_calls=(
+            f"The LLM generated tool calls: {output['tool_calls']}, but no reply was generated"
+        ),
+        no_response_reasoning_no_tool_calls="No reply was generated by the LLM",
+    )
 
     if langfuse_enabled and langfuse:
         langfuse.update_current_trace(
@@ -774,22 +820,17 @@ async def run_test_external(
     response = output.get("response")
     tool_calls = output.get("tool_calls", [])
 
-    if evaluation["type"] == "tool_call":
-        metrics = evaluate_tool_calls(tool_calls, evaluation["tool_calls"])
-    elif evaluation["type"] == "response":
-        metrics = await _evaluate_response(
-            chat_history=chat_history,
-            response=response,
-            tool_calls=tool_calls,
-            evaluators=evaluators,
-            fallback_judge_model=fallback_judge_model,
-            no_response_reasoning_with_tool_calls=(
-                f"The agent made tool calls {tool_calls} but returned no text response"
-            ),
-            no_response_reasoning_no_tool_calls="No reply was returned by the external agent",
-        )
-    else:
-        raise ValueError(f"Invalid evaluation type: {evaluation['type']}")
+    metrics = await evaluate_test_case_output(
+        chat_history=chat_history,
+        evaluation=evaluation,
+        output={"response": response, "tool_calls": tool_calls},
+        evaluators=evaluators,
+        fallback_judge_model=fallback_judge_model,
+        no_response_reasoning_with_tool_calls=(
+            f"The agent made tool calls {tool_calls} but returned no text response"
+        ),
+        no_response_reasoning_no_tool_calls="No reply was returned by the external agent",
+    )
 
     return {
         "output": {"response": response, "tool_calls": tool_calls},
@@ -1023,18 +1064,7 @@ async def run_model_tests(
             print_log_save_path,
         )
 
-    with open(join(model_output_dir, "results.json"), "w") as f:
-        json.dump(results, f, indent=4)
-
-    metrics = {
-        "total": total_tests,
-        "passed": passed_count,
-        "criteria": _aggregate_criteria(results, evaluators_registry),
-        "tool_calls": _aggregate_tool_calls(results),
-    }
-
-    with open(join(model_output_dir, "metrics.json"), "w") as f:
-        json.dump(metrics, f, indent=4)
+    _write_test_results_outputs(results, model_output_dir, evaluators_registry)
 
     # Remove pipecat log file sink
     with _logger_lock:
@@ -1046,6 +1076,169 @@ async def run_model_tests(
         "metrics": {"passed": passed_count, "total": total_tests},
         "results": results,
     }
+
+
+def _write_test_results_outputs(
+    results: List[dict],
+    output_dir: str,
+    evaluators_registry: dict,
+) -> tuple[int, int]:
+    """Write results.json + metrics.json for an LLM test run.
+
+    Returns ``(passed, total)``.
+    """
+    total = len(results)
+    passed = sum(1 for r in results if r["metrics"]["passed"])
+
+    with open(join(output_dir, "results.json"), "w") as f:
+        json.dump(results, f, indent=4)
+
+    metrics = {
+        "total": total,
+        "passed": passed,
+        "criteria": _aggregate_criteria(results, evaluators_registry),
+        "tool_calls": _aggregate_tool_calls(results),
+    }
+    with open(join(output_dir, "metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=4)
+
+    return passed, total
+
+
+def validate_llm_eval_only_dataset(
+    dataset: object,
+) -> tuple[bool, str]:
+    """Validate the shape of an LLM eval-only dataset.
+
+    Each item must be ``{"test_case": {history, evaluation}, "output":
+    {response, tool_calls}}``. Returns ``(is_valid, error_message)``; the
+    caller is expected to surface the message and exit non-zero on failure.
+    """
+    if not isinstance(dataset, list):
+        return False, "Dataset must be a JSON list of {test_case, output} items"
+
+    for i, item in enumerate(dataset):
+        if not isinstance(item, dict):
+            return False, f"Item {i}: must be an object"
+        if "test_case" not in item or "output" not in item:
+            return (
+                False,
+                f"Item {i}: missing required keys 'test_case' and/or 'output'",
+            )
+        tc = item["test_case"]
+        out = item["output"]
+        if not isinstance(tc, dict):
+            return False, f"Item {i}: 'test_case' must be an object"
+        if not isinstance(out, dict):
+            return False, f"Item {i}: 'output' must be an object"
+        if "history" not in tc or "evaluation" not in tc:
+            return (
+                False,
+                f"Item {i}: 'test_case' missing required fields 'history' and/or 'evaluation'",
+            )
+        if not isinstance(tc["history"], list):
+            return False, f"Item {i}: 'test_case.history' must be a list"
+        if not isinstance(tc["evaluation"], dict):
+            return False, f"Item {i}: 'test_case.evaluation' must be an object"
+        ev_type = tc["evaluation"].get("type")
+        if ev_type not in ("response", "tool_call"):
+            return (
+                False,
+                f"Item {i}: 'test_case.evaluation.type' must be 'response' or 'tool_call' (got {ev_type!r})",
+            )
+        if "response" not in out or "tool_calls" not in out:
+            return (
+                False,
+                f"Item {i}: 'output' must include 'response' (str) and 'tool_calls' (list)",
+            )
+        if not isinstance(out.get("tool_calls", []), list):
+            return False, f"Item {i}: 'output.tool_calls' must be a list"
+
+    return True, ""
+
+
+async def run_eval_only_tests(
+    config: dict,
+    dataset: list[dict],
+    output_dir: str,
+) -> dict:
+    """Run evaluators on a pre-existing dataset of (test_case, output) pairs.
+
+    Skips LLM inference. ``config`` supplies the evaluators registry; each
+    dataset item must have a ``test_case`` (with ``history`` and
+    ``evaluation``) and an ``output`` (with ``response`` and ``tool_calls``).
+
+    Writes ``results.json`` and ``metrics.json`` to ``output_dir``.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    evaluators_registry = _build_evaluators_registry(config)
+    write_evaluator_config(output_dir, _evaluators_for_config_output(config))
+
+    print_log_save_path = join(output_dir, "results.log")
+    if exists(print_log_save_path):
+        os.remove(print_log_save_path)
+
+    _print_and_log("\n\033[94mEval-only\033[0m\n", print_log_save_path)
+
+    results: list[dict] = []
+    results_file_path = join(output_dir, "results.json")
+
+    tools = config.get("tools", []) or []
+
+    for i, item in enumerate(dataset):
+        test_case = item["test_case"]
+        output = item["output"]
+        evaluation = test_case["evaluation"]
+
+        resolved_evaluators = (
+            _resolve_evaluators_for_test_case(evaluation, evaluators_registry)
+            if evaluation.get("type") == "response"
+            else None
+        )
+
+        # Apply the same history preprocessing the live flow uses, so the
+        # judge sees the same conversation shape in both modes. ``strict=False``
+        # keeps real tool responses already present in eval-only datasets.
+        preprocessed_history = preprocess_conversation_history(
+            test_case["history"], tools, strict=False
+        )
+
+        metrics = await evaluate_test_case_output(
+            chat_history=preprocessed_history,
+            evaluation=evaluation,
+            output=output,
+            evaluators=resolved_evaluators,
+            no_response_reasoning_with_tool_calls=(
+                f"Tool calls present: {output.get('tool_calls')}, but no reply provided"
+            ),
+            no_response_reasoning_no_tool_calls="No reply provided",
+        )
+
+        if metrics["passed"]:
+            _print_and_log(f"✅ Test case {i + 1} passed", print_log_save_path)
+        else:
+            _print_and_log(f"❌ Test case {i + 1} failed", print_log_save_path)
+        if "reasoning" in metrics:
+            _print_and_log(f"  Reason: {metrics['reasoning']}", print_log_save_path)
+
+        result = {"output": output, "metrics": metrics, "test_case": test_case}
+        if "id" in test_case:
+            result["test_case_id"] = test_case["id"]
+        results.append(result)
+
+        with open(results_file_path, "w") as f:
+            json.dump(results, f, indent=4)
+
+    passed, total = _write_test_results_outputs(
+        results, output_dir, evaluators_registry
+    )
+    pct = (passed / total * 100) if total else 0.0
+    _print_and_log(
+        f"\n✅ Total Passed: {passed}/{total} ({pct:.1f}%)", print_log_save_path
+    )
+
+    return {"passed": passed, "total": total, "results": results}
 
 
 async def main():
@@ -1075,8 +1268,7 @@ async def main():
         "-m",
         "--model",
         type=str,
-        required=True,
-        help="Model to use for evaluation",
+        help="Model to use for evaluation. Not required with --eval-only.",
     )
     parser.add_argument(
         "-p",
@@ -1086,8 +1278,62 @@ async def main():
         default="openrouter",
         help="LLM provider to use (openai or openrouter)",
     )
+    parser.add_argument(
+        "--eval-only",
+        action="store_true",
+        help="Skip LLM inference and run evaluators on a dataset of (test_case, output) pairs",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Path to dataset JSON for --eval-only (list of {test_case, output} items)",
+    )
 
     args = parser.parse_args()
+
+    config = json.load(open(args.config))
+
+    if args.eval_only:
+        if not args.dataset:
+            print("\033[31mError: --dataset is required with --eval-only\033[0m")
+            sys.exit(1)
+
+        try:
+            with open(args.dataset) as f:
+                dataset = json.load(f)
+        except Exception as e:
+            print(f"\033[31mError: failed to read dataset {args.dataset}: {e}\033[0m")
+            sys.exit(1)
+
+        is_valid, err = validate_llm_eval_only_dataset(dataset)
+        if not is_valid:
+            print(f"\033[31mDataset validation error: {err}\033[0m")
+            sys.exit(1)
+
+        print("\n\033[91mLLM Eval-Only\033[0m\n")
+        print(f"Config: {args.config}")
+        print(f"Dataset: {args.dataset}")
+        print("")
+
+        os.makedirs(args.output_dir, exist_ok=True)
+        result = await run_eval_only_tests(
+            config=config,
+            dataset=dataset,
+            output_dir=args.output_dir,
+        )
+        passed = result["passed"]
+        total = result["total"]
+        pct = (passed / total * 100) if total else 0.0
+        print(f"\n\033[92m{'='*60}\033[0m")
+        print(f"\033[92mSummary\033[0m")
+        print(f"\033[92m{'='*60}\033[0m\n")
+        print(f"  eval-only: {passed}/{total} ({pct:.1f}%)")
+        return
+
+    if not args.model:
+        print("\033[31mError: --model is required (omit only with --eval-only)\033[0m")
+        sys.exit(1)
 
     model = args.model
 
@@ -1096,8 +1342,6 @@ async def main():
     print(f"Model: {display_label(args.provider, model)}")
     print(f"Provider: {args.provider}")
     print("")
-
-    config = json.load(open(args.config))
 
     # Run tests for single model - results saved to output_dir/model_name/
     result = await run_model_tests(
