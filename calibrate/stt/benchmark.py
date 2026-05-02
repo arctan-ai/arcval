@@ -274,9 +274,55 @@ async def main():
     # raised ``FileExistsError``.
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Mirror everything written to stdout/stderr into a single output-dir-level
-    # `logs` file so the full terminal session (header, per-provider output,
-    # tqdm progress, leaderboard prints, summary) is captured in one place.
+    # Load evaluators from optional config file (shared by both flows)
+    judge_evaluators = None
+    if args.config:
+        import json as _json
+
+        with open(args.config) as _f:
+            _cfg = _json.load(_f)
+        judge_evaluators = _cfg.get("evaluators")
+
+    # Eval-only mode owns ``output_dir/logs`` itself via the provider_log
+    # contextvar, so we don't set up a benchmark-level StreamTee here —
+    # otherwise both writers would target the same path (and the eval-only
+    # ``os.remove`` of that path would unlink the active handle on POSIX or
+    # raise PermissionError on Windows).
+    if args.eval_only:
+        print("\n\033[91mSTT Eval-Only\033[0m\n")
+        print(f"Dataset: {args.dataset}")
+        print(f"Output: {args.output_dir}")
+        print("")
+
+        result = await run_eval_only(
+            dataset_path=args.dataset,
+            output_dir=args.output_dir,
+            judge_evaluators=judge_evaluators,
+        )
+
+        print(f"\n\033[92m{'='*60}\033[0m")
+        print(f"\033[92mSummary\033[0m")
+        print(f"\033[92m{'='*60}\033[0m\n")
+
+        if result.get("status") == "error":
+            print(f"  \033[31mError - {result.get('error')}\033[0m")
+            sys.exit(1)
+
+        metrics = result.get("metrics", {})
+        wer = metrics.get("wer", 0)
+        judge_scores = {
+            k: v["mean"]
+            for k, v in metrics.items()
+            if isinstance(v, dict) and "type" in v
+        }
+        judge_str = ", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items())
+        print(f"  WER={wer:.4f}, {judge_str}")
+        return
+
+    # Benchmark (multi-provider) mode: mirror stdout/stderr into a single
+    # output-dir-level ``logs`` file so the full terminal session (header,
+    # per-provider output, tqdm progress, leaderboard prints, summary) is
+    # captured in one place.
     log_path = join(args.output_dir, "logs")
     if exists(log_path):
         os.remove(log_path)
@@ -286,46 +332,6 @@ async def main():
     sys.stderr = StreamTee(original_stderr, log_file)
 
     try:
-        # Load evaluators from optional config file (shared by both flows)
-        judge_evaluators = None
-        if args.config:
-            import json as _json
-
-            with open(args.config) as _f:
-                _cfg = _json.load(_f)
-            judge_evaluators = _cfg.get("evaluators")
-
-        if args.eval_only:
-            print("\n\033[91mSTT Eval-Only\033[0m\n")
-            print(f"Dataset: {args.dataset}")
-            print(f"Output: {args.output_dir}")
-            print("")
-
-            result = await run_eval_only(
-                dataset_path=args.dataset,
-                output_dir=args.output_dir,
-                judge_evaluators=judge_evaluators,
-            )
-
-            print(f"\n\033[92m{'='*60}\033[0m")
-            print(f"\033[92mSummary\033[0m")
-            print(f"\033[92m{'='*60}\033[0m\n")
-
-            if result.get("status") == "error":
-                print(f"  \033[31mError - {result.get('error')}\033[0m")
-                sys.exit(1)
-
-            metrics = result.get("metrics", {})
-            wer = metrics.get("wer", 0)
-            judge_scores = {
-                k: v["mean"]
-                for k, v in metrics.items()
-                if isinstance(v, dict) and "type" in v
-            }
-            judge_str = ", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items())
-            print(f"  WER={wer:.4f}, {judge_str}")
-            return
-
         print("\n\033[91mSTT Benchmark\033[0m\n")
         print(f"Provider(s): {', '.join(providers)}")
         print(f"Language: {args.language}")
