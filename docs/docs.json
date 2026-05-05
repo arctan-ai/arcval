@@ -15,7 +15,7 @@
         "groups": [
           {
             "group": "Get Started",
-            "pages": ["getting-started/introduction"]
+            "pages": [ "getting-started/introduction" ]
           },
           {
             "group": "Quickstart",
@@ -70,7 +70,7 @@
           },
           {
             "group": "Guides",
-            "pages": ["guides/configuring-tools"]
+            "pages": [ "guides/configuring-tools" ]
           }
         ]
       },
@@ -79,7 +79,7 @@
         "groups": [
           {
             "group": "Browse use cases",
-            "pages": ["examples/overview"]
+            "pages": [ "examples/overview" ]
           }
         ]
       }
@@ -91,11 +91,7 @@
           "href": "https://github.com/artpark-sahai-org/calibrate",
           "icon": "github"
         },
-        {
-          "anchor": "Discord",
-          "href": "https://discord.gg/9dQB4AngK2",
-          "icon": "discord"
-        },
+
         {
           "anchor": "WhatsApp",
           "href": "https://chat.whatsapp.com/JygDNcZ943a3VmZDXYMg5Z",
@@ -110,10 +106,6 @@
   },
   "navbar": {
     "links": [
-      {
-        "label": "Join Discord",
-        "href": "https://discord.gg/9dQB4AngK2"
-      },
       {
         "label": "Join WhatsApp",
         "href": "https://chat.whatsapp.com/JygDNcZ943a3VmZDXYMg5Z"
