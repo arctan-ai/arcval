@@ -52,6 +52,7 @@ dev = [
     "ipython>=8.37.0",
     "pytest>=7.0",
     "pytest-httpserver>=1.0",
+    "pytest-cov>=4.0",
 ]
 
 [project.urls]

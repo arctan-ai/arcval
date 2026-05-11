@@ -28,7 +28,14 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -v --cov=calibrate --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
       - name: Send failure email
         if: failure()

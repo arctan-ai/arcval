@@ -1,6 +1,7 @@
 # Calibrate
 
 [![WhatsApp](https://img.shields.io/badge/WhatsApp-Join%20Community-25D366?logo=whatsapp&logoColor=white)](https://chat.whatsapp.com/JygDNcZ943a3VmZDXYMg5Z)
+[![codecov](https://codecov.io/gh/ARTPARK-SAHAI-ORG/calibrate/branch/main/graph/badge.svg)](https://codecov.io/gh/ARTPARK-SAHAI-ORG/calibrate)
 [![CC BY-SA 4.0][cc-by-sa-shield]][cc-by-sa]
 
 CLI for [Calibrate](https://calibrate.artpark.ai): an AI evaluation platform for non-profits
