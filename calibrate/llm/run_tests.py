@@ -4,7 +4,7 @@ import re
 import sys
 import uuid
 from collections import defaultdict
-from typing import List, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -508,6 +508,82 @@ def preprocess_conversation_history(
     return processed_history
 
 
+def _sorted_union_dict_keys(left: dict, right: dict) -> List[Any]:
+    """Keys from both sides, ordered so mixed types (illegal in JSON) cannot break ``sorted``."""
+    return sorted(set(left) | set(right), key=lambda k: (type(k).__name__, repr(k)))
+
+
+def _tool_call_argument_value_mismatch_line(key_path: str, expected, actual) -> str:
+    """One human-readable line explaining why ``expected`` and ``actual`` differ."""
+    exp_t = type(expected).__name__
+    act_t = type(actual).__name__
+    if type(expected) is not type(actual):
+        same_as_str = str(expected) == str(actual)
+        note = " (same string form)" if same_as_str else ""
+        return (
+            f"  {key_path}: type mismatch — expected {exp_t} {expected!r}, "
+            f"got {act_t} {actual!r}{note}"
+        )
+    return f"  {key_path}: value mismatch — expected {expected!r}, got {actual!r}"
+
+
+def _tool_call_arguments_diff_lines(
+    expected: dict, actual: dict, prefix: str = ""
+) -> List[str]:
+    """List per-field mismatch lines for two argument dicts (recursive for nested dicts)."""
+    lines: List[str] = []
+    for key in _sorted_union_dict_keys(expected, actual):
+        path = f"{prefix}.{key}" if prefix else key
+        in_exp = key in expected
+        in_act = key in actual
+        if not in_exp:
+            lines.append(
+                f"  {path}: unexpected key in actual output (value {actual[key]!r})"
+            )
+            continue
+        if not in_act:
+            lines.append(
+                f"  {path}: missing in actual output (expected {expected[key]!r})"
+            )
+            continue
+        ev, av = expected[key], actual[key]
+        if ev == av:
+            continue
+        if isinstance(ev, dict) and isinstance(av, dict):
+            lines.extend(_tool_call_arguments_diff_lines(ev, av, path))
+            continue
+        if isinstance(ev, list) and isinstance(av, list):
+            lines.append(_tool_call_argument_value_mismatch_line(path, ev, av))
+            continue
+        lines.append(_tool_call_argument_value_mismatch_line(path, ev, av))
+    return lines
+
+
+def _tool_call_arguments_mismatch_message(expected, actual) -> str:
+    """Build a multi-line tool-call arguments mismatch reason."""
+    header = "Tool call arguments mismatch:"
+    if not isinstance(expected, dict):
+        return (
+            f"{header}\n"
+            f"  arguments: cannot diff — expected non-dict {type(expected).__name__} "
+            f"{expected!r}, got {type(actual).__name__} {actual!r}"
+        )
+    if not isinstance(actual, dict):
+        return (
+            f"{header}\n"
+            f"  arguments: expected dict {expected!r}, "
+            f"got {type(actual).__name__} {actual!r}"
+        )
+    detail_lines = _tool_call_arguments_diff_lines(expected, actual)
+    if not detail_lines:
+        return (
+            f"{header}\n"
+            f"  expected arguments: {expected!r}\n"
+            f"  actual arguments: {actual!r}"
+        )
+    return header + "\n" + "\n".join(detail_lines)
+
+
 def _tool_call_pair_mismatch(
     output_tool_call: dict, evaluation_tool_call: dict
 ) -> Optional[str]:
@@ -519,15 +595,13 @@ def _tool_call_pair_mismatch(
         )
     if "arguments" not in evaluation_tool_call:
         return None
-    if (
-        evaluation_tool_call["arguments"] is not None
-        and output_tool_call["arguments"] != evaluation_tool_call["arguments"]
-    ):
-        return (
-            f"Tool call arguments mismatch - expected arguments: "
-            f"{evaluation_tool_call['arguments']} but got: {output_tool_call['arguments']}"
-        )
-    return None
+    exp_args = evaluation_tool_call.get("arguments")
+    if exp_args is None:
+        return None
+    out_args = output_tool_call.get("arguments")
+    if out_args == exp_args:
+        return None
+    return _tool_call_arguments_mismatch_message(exp_args, out_args)
 
 
 def evaluate_tool_calls(output_tool_calls, evaluation_tool_calls):

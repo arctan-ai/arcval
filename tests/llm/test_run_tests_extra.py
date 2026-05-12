@@ -239,6 +239,58 @@ class TestToolCallPairs(unittest.TestCase):
             {"tool": "a", "arguments": {"x": 2}},
         )
         self.assertIn("arguments mismatch", reason)
+        self.assertIn("x:", reason)
+        self.assertIn("value mismatch", reason)
+
+    def test_pair_args_mismatch_type_only(self):
+        from calibrate.llm.run_tests import _tool_call_pair_mismatch
+
+        reason = _tool_call_pair_mismatch(
+            {"tool": "a", "arguments": {"phone_number": 9811123401}},
+            {"tool": "a", "arguments": {"phone_number": "9811123401"}},
+        )
+        self.assertIn("phone_number", reason)
+        self.assertIn("type mismatch", reason)
+        self.assertIn("same string form", reason)
+
+    def test_pair_args_mismatch_multiple_keys(self):
+        from calibrate.llm.run_tests import _tool_call_pair_mismatch
+
+        reason = _tool_call_pair_mismatch(
+            {
+                "tool": "fill_form",
+                "arguments": {"a": 1, "b": "ok", "c": None},
+            },
+            {
+                "tool": "fill_form",
+                "arguments": {"a": 2, "b": "no", "c": 0},
+            },
+        )
+        self.assertIn("a:", reason)
+        self.assertIn("b:", reason)
+        self.assertIn("c:", reason)
+
+    def test_pair_args_mismatch_extra_and_missing_keys(self):
+        from calibrate.llm.run_tests import _tool_call_pair_mismatch
+
+        reason = _tool_call_pair_mismatch(
+            {"tool": "a", "arguments": {"x": 1, "extra": 9}},
+            {"tool": "a", "arguments": {"x": 1, "y": 2}},
+        )
+        self.assertIn("extra", reason)
+        self.assertIn("unexpected key", reason)
+        self.assertIn("y", reason)
+        self.assertIn("missing in actual", reason)
+
+    def test_pair_args_mismatch_mixed_key_types_no_crash(self):
+        from calibrate.llm.run_tests import _tool_call_arguments_diff_lines
+
+        lines = _tool_call_arguments_diff_lines(
+            {1: "a", "b": 2},
+            {1: "x", "b": 2},
+        )
+        self.assertTrue(any("1" in ln for ln in lines))
+        self.assertEqual(len(lines), 1)
 
     def test_pair_none_args_match(self):
         from calibrate.llm.run_tests import _tool_call_pair_mismatch
