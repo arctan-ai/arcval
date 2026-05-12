@@ -22,9 +22,15 @@ class AsyncRateLimiter:
     """Sliding-window async rate limiter.
 
     ``acquire()`` returns once the call can proceed without exceeding
-    ``max_calls`` over ``period`` seconds. Safe under concurrent awaiters —
-    a single ``asyncio.Lock`` serializes the window check, so two coroutines
-    cannot both observe a free slot and overshoot the cap.
+    ``max_calls`` over ``period`` seconds. Safe under concurrent awaiters
+    within a single event loop — the ``asyncio.Lock`` serializes the
+    window check so two coroutines cannot both observe a free slot and
+    overshoot the cap.
+
+    Designed for the calibrate CLI usage pattern: one ``asyncio.run`` per
+    process, all Sarvam calls inside it. Not safe across multiple
+    ``asyncio.run`` invocations or across threads — the lock binds to the
+    first event loop that contends on it.
     """
 
     def __init__(self, max_calls: int, period: float = 60.0):
@@ -35,23 +41,10 @@ class AsyncRateLimiter:
         self.max_calls = max_calls
         self.period = period
         self._calls: deque[float] = deque()
-        self._lock: asyncio.Lock | None = None
-        self._lock_loop: asyncio.AbstractEventLoop | None = None
-
-    def _get_lock(self) -> asyncio.Lock:
-        # ``asyncio.Lock`` binds to whatever loop first awaits it. Module-level
-        # limiters outlive any single ``asyncio.run(...)``, so we lazily
-        # rebuild the lock whenever the running loop changes — otherwise a
-        # second ``asyncio.run`` would inherit a lock bound to a closed loop
-        # and raise ``RuntimeError: ... is bound to a different event loop``.
-        loop = asyncio.get_running_loop()
-        if self._lock is None or self._lock_loop is not loop:
-            self._lock = asyncio.Lock()
-            self._lock_loop = loop
-        return self._lock
+        self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._get_lock():
+        async with self._lock:
             now = time.monotonic()
             self._evict(now)
 

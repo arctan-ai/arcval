@@ -53,9 +53,7 @@ class TestAsyncRateLimiterBehavior(unittest.IsolatedAsyncioTestCase):
             fake_now[0] += seconds
 
         with patch("calibrate.rate_limit.time.monotonic", side_effect=mono):
-            with patch(
-                "calibrate.rate_limit.asyncio.sleep", side_effect=fake_sleep
-            ):
+            with patch("calibrate.rate_limit.asyncio.sleep", side_effect=fake_sleep):
                 await limiter.acquire()
                 fake_now[0] = 1.0
                 await limiter.acquire()
@@ -75,9 +73,7 @@ class TestAsyncRateLimiterBehavior(unittest.IsolatedAsyncioTestCase):
             return fake_now[0]
 
         with patch("calibrate.rate_limit.time.monotonic", side_effect=mono):
-            with patch(
-                "calibrate.rate_limit.asyncio.sleep"
-            ) as mock_sleep:
+            with patch("calibrate.rate_limit.asyncio.sleep") as mock_sleep:
                 await limiter.acquire()
                 fake_now[0] = 1.0
                 await limiter.acquire()
@@ -98,9 +94,7 @@ class TestAsyncRateLimiterBehavior(unittest.IsolatedAsyncioTestCase):
             # Simulate window expiry on sleep
             limiter._calls.clear()
 
-        with patch(
-            "calibrate.rate_limit.asyncio.sleep", side_effect=fake_sleep
-        ):
+        with patch("calibrate.rate_limit.asyncio.sleep", side_effect=fake_sleep):
 
             async def worker():
                 await limiter.acquire()
@@ -109,55 +103,6 @@ class TestAsyncRateLimiterBehavior(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(*(worker() for _ in range(5)))
 
         self.assertLessEqual(observed_max[0], 2)
-
-
-class TestAsyncRateLimiterLoopRebind(unittest.TestCase):
-    """A module-level limiter must survive multiple ``asyncio.run(...)``
-    invocations in the same interpreter. ``asyncio.Lock`` binds to the loop
-    that first contends on it, so without rebinding the second run would
-    raise ``RuntimeError: ... is bound to a different event loop``.
-    """
-
-    def test_survives_multiple_asyncio_run_calls(self):
-        limiter = AsyncRateLimiter(max_calls=5, period=60.0)
-
-        async def two_acquires():
-            await limiter.acquire()
-            await limiter.acquire()
-
-        asyncio.run(two_acquires())
-        first_loop = limiter._lock_loop
-
-        asyncio.run(two_acquires())
-        second_loop = limiter._lock_loop
-
-        self.assertIsNotNone(first_loop)
-        self.assertIsNotNone(second_loop)
-        self.assertIsNot(first_loop, second_loop)
-
-    def test_survives_multiple_runs_with_contention(self):
-        # ``asyncio.Lock`` calls ``_get_loop()`` only when a waiter has to
-        # queue (i.e. the lock is already held). Forcing the limiter into
-        # its wait branch and then racing a second acquirer makes the
-        # second one queue, which binds the lock to loop A. A second
-        # ``asyncio.run`` would then raise without the rebind.
-        limiter = AsyncRateLimiter(max_calls=1, period=60.0)
-        real_sleep = asyncio.sleep
-
-        async def fake_sleep(_seconds):
-            await real_sleep(0)  # actually yield so the second acquirer can queue
-            limiter._calls.clear()
-
-        async def race():
-            limiter._calls.clear()
-            with patch(
-                "calibrate.rate_limit.asyncio.sleep", side_effect=fake_sleep
-            ):
-                await limiter.acquire()  # fills the bucket
-                await asyncio.gather(limiter.acquire(), limiter.acquire())
-
-        asyncio.run(race())
-        asyncio.run(race())  # would raise without the rebind
 
 
 class TestSarvamModuleLimiters(unittest.TestCase):
