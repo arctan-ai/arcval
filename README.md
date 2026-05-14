@@ -36,7 +36,23 @@ calibrate simulations  # Interactive text or voice simulations
 
 ## Contributing
 
-After cloning the repo, enable the project's git hooks so the pre-commit test
+Install development dependencies once (requires [uv](https://docs.astral.sh/uv/)):
+
+```bash
+uv sync --extra dev
+```
+
+### Running tests
+
+Run the full test suite:
+
+```bash
+uv run pytest tests/
+```
+
+### Pre-commit
+
+Enable the project's git hooks so the pre-commit test
 runner fires on commits to `main`:
 
 ```bash
