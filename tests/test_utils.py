@@ -23,6 +23,12 @@ class TestLanguageCodes(unittest.TestCase):
         self.assertEqual(get_stt_language_code("english", "elevenlabs"), "eng")
         self.assertEqual(get_stt_language_code("english", "openai"), "en")
         self.assertEqual(get_stt_language_code("english", "groq"), "en")
+        self.assertEqual(get_stt_language_code("bengali", "groq"), "bn")
+        self.assertEqual(get_stt_language_code("mandarin", "groq"), "zh")
+        self.assertEqual(get_stt_language_code("myanmar", "groq"), "my")
+        self.assertEqual(get_stt_language_code("burmese", "groq"), "my")
+        self.assertEqual(get_stt_language_code("haitian creole", "groq"), "ht")
+        self.assertEqual(get_stt_language_code("bengali", "openai"), "en")
         self.assertEqual(get_stt_language_code("english", "deepgram"), "en")
         # Unknown provider falls through to default
         self.assertEqual(get_stt_language_code("english", "unknown"), "en")
