@@ -346,7 +346,28 @@ _CHECK_FUNCTIONS = {
 # ─────────────────────────────────────────────────────────────────────
 
 
-async def _check_single_provider(provider: dict, client: httpx.AsyncClient) -> dict:
+async def _emit_status_event(emit, provider: dict, stage: str, message: str, result=None):
+    if emit is None:
+        return
+
+    event = {
+        "type": "result" if result is not None else "progress",
+        "provider": provider["name"],
+        "types": provider["types"],
+        "stage": stage,
+        "message": message,
+    }
+    if result is not None:
+        event["result"] = _status_json_entry(result)
+        event["_raw_result"] = result
+    await emit(event)
+
+
+async def _check_single_provider(
+    provider: dict,
+    client: httpx.AsyncClient,
+    emit=None,
+) -> dict:
     """Check a single provider's API key and make a real API call."""
     name = provider["name"]
     env_vars = provider["env_vars"]
@@ -354,7 +375,7 @@ async def _check_single_provider(provider: dict, client: httpx.AsyncClient) -> d
     # Check if required env vars are set
     missing = [v for v in env_vars if not os.getenv(v)]
     if missing:
-        return {
+        result = {
             "name": name,
             "types": provider["types"],
             "key_set": False,
@@ -364,14 +385,25 @@ async def _check_single_provider(provider: dict, client: httpx.AsyncClient) -> d
             "error": None,
             "latency_ms": None,
         }
+        missing_vars = ", ".join(missing)
+        await _emit_status_event(
+            emit,
+            provider,
+            "skipped",
+            f"Skipped: missing {missing_vars}",
+            result,
+        )
+        return result
 
     # Make a real API call to verify the provider works
     check_fn = _CHECK_FUNCTIONS[name]
     start = time.time()
     try:
+        await _emit_status_event(emit, provider, "input_sent", "Input sent")
         check_type = await asyncio.wait_for(check_fn(client), timeout=30.0)
         latency_ms = round((time.time() - start) * 1000)
-        return {
+        await _emit_status_event(emit, provider, "output_received", "Output received")
+        result = {
             "name": name,
             "types": provider["types"],
             "key_set": True,
@@ -381,45 +413,156 @@ async def _check_single_provider(provider: dict, client: httpx.AsyncClient) -> d
             "error": None,
             "latency_ms": latency_ms,
         }
+        await _emit_status_event(emit, provider, "working", "Working", result)
+        return result
     except asyncio.TimeoutError:
         latency_ms = round((time.time() - start) * 1000)
-        return {
+        result = {
             "name": name,
             "types": provider["types"],
             "key_set": True,
             "missing_vars": [],
-            "status": "error",
+            "status": "fail",
             "check_type": None,
             "error": "Timed out (30s)",
             "latency_ms": latency_ms,
         }
+        await _emit_status_event(emit, provider, "not_working", "Not working", result)
+        return result
     except httpx.HTTPStatusError as e:
         latency_ms = round((time.time() - start) * 1000)
-        return {
+        await _emit_status_event(emit, provider, "output_received", "Output received")
+        result = {
             "name": name,
             "types": provider["types"],
             "key_set": True,
             "missing_vars": [],
-            "status": "error",
+            "status": "fail",
             "check_type": None,
             "error": f"HTTP {e.response.status_code}",
             "latency_ms": latency_ms,
         }
+        await _emit_status_event(emit, provider, "not_working", "Not working", result)
+        return result
     except Exception as e:
         latency_ms = round((time.time() - start) * 1000)
         error_msg = str(e)
         if len(error_msg) > 50:
             error_msg = error_msg[:50] + "..."
-        return {
+        result = {
             "name": name,
             "types": provider["types"],
             "key_set": True,
             "missing_vars": [],
-            "status": "error",
+            "status": "fail",
             "check_type": None,
             "error": error_msg,
             "latency_ms": latency_ms,
         }
+        await _emit_status_event(emit, provider, "not_working", "Not working", result)
+        return result
+
+
+def _status_json_entry(result: dict) -> dict:
+    """Convert an internal provider result to the public status shape."""
+    public_status = result["status"]
+    if public_status == "ok":
+        public_status = "pass"
+
+    return {
+        "status": public_status,
+        "types": result["types"],
+        "error": result["error"],
+        "latency_ms": result["latency_ms"],
+        "missing_vars": result["missing_vars"],
+        "key_set": result["key_set"],
+    }
+
+
+async def iter_provider_results():
+    """Yield internal provider check results as soon as each provider finishes."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        tasks = [
+            asyncio.create_task(_check_single_provider(provider, client))
+            for provider in PROVIDERS
+        ]
+
+        try:
+            for task in asyncio.as_completed(tasks):
+                yield await task
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def iter_status_events(include_internal: bool = False):
+    """Yield progress and result events as provider checks run."""
+    queue = asyncio.Queue()
+
+    async def emit(event):
+        await queue.put(event)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        async def run_check(provider):
+            result = await _check_single_provider(provider, client, emit=emit)
+            await queue.put({"type": "_done", "provider": provider["name"], "result": result})
+
+        tasks = [asyncio.create_task(run_check(provider)) for provider in PROVIDERS]
+        finished = 0
+
+        try:
+            while finished < len(tasks):
+                event = await queue.get()
+                if event["type"] == "_done":
+                    finished += 1
+                    continue
+                if not include_internal:
+                    event.pop("_raw_result", None)
+                yield event
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def iter_status():
+    """Yield public JSON-ready status results as soon as each provider finishes."""
+    async for event in iter_status_events():
+        if event["type"] == "result":
+            yield {
+                "provider": event["provider"],
+                "result": event["result"],
+            }
+
+
+async def run_status_live(table: bool = False):
+    """Print live status progress and return the final status JSON."""
+    if table:
+        print("\n  Checking provider status...")
+
+    status_json = {}
+    raw_results = []
+    async for event in iter_status_events(include_internal=True):
+        raw_result = event.pop("_raw_result", None)
+        if table:
+            _print_status_event(event)
+        else:
+            print(json.dumps(event), flush=True)
+
+        if event["type"] == "result":
+            status_json[event["provider"]] = event["result"]
+            if raw_result is not None:
+                raw_results.append(raw_result)
+
+    if table:
+        _print_results(raw_results)
+    else:
+        print(json.dumps({"type": "summary", "result": status_json}, indent=2), flush=True)
+
+    return status_json
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -477,7 +620,7 @@ def _print_results(results: list) -> None:
 
     # Summary
     ok_count = sum(1 for r in results if r["status"] == "ok")
-    error_count = sum(1 for r in results if r["status"] == "error")
+    error_count = sum(1 for r in results if r["status"] == "fail")
     skipped_count = sum(1 for r in results if r["status"] == "skipped")
 
     parts = []
@@ -492,6 +635,54 @@ def _print_results(results: list) -> None:
     print()
 
 
+def _print_status_event(event: dict) -> None:
+    """Print one live status event."""
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    YELLOW = "\033[33m"
+    DIM = "\033[2m"
+    RESET = "\033[0m"
+
+    provider = event["provider"]
+    stage = event["stage"]
+
+    if event["type"] == "progress":
+        icon = "→" if stage == "input_sent" else "←"
+        print(f"  {DIM}{icon} {provider}: {event['message']}{RESET}", flush=True)
+        return
+
+    result = event["result"]
+    if result["status"] == "pass":
+        latency = f" ({result['latency_ms']}ms)" if result["latency_ms"] is not None else ""
+        print(f"  {GREEN}✓ {provider}: working{latency}{RESET}", flush=True)
+    elif result["status"] == "skipped":
+        missing = ", ".join(result["missing_vars"])
+        print(f"  {YELLOW}— {provider}: skipped, missing {missing}{RESET}", flush=True)
+    else:
+        print(f"  {RED}✗ {provider}: not working - {result['error']}{RESET}", flush=True)
+
+
+def _print_status_summary(status_json: dict) -> None:
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
+
+    pass_count = sum(1 for r in status_json.values() if r["status"] == "pass")
+    fail_count = sum(1 for r in status_json.values() if r["status"] == "fail")
+    skipped_count = sum(1 for r in status_json.values() if r["status"] == "skipped")
+
+    parts = []
+    if pass_count:
+        parts.append(f"{GREEN}{pass_count} working{RESET}")
+    if fail_count:
+        parts.append(f"{RED}{fail_count} not working{RESET}")
+    if skipped_count:
+        parts.append(f"{YELLOW}{skipped_count} skipped (no API key){RESET}")
+
+    print(f"\n  {' · '.join(parts)}\n", flush=True)
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────────────
@@ -504,23 +695,10 @@ async def main(quiet: bool = False):
         quiet: If True, suppress the printed table (for machine-readable output).
     """
     if not quiet:
-        print("\n  Checking provider status...")
+        return await run_status_live(table=True)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        tasks = [_check_single_provider(p, client) for p in PROVIDERS]
-        results = await asyncio.gather(*tasks)
-
-    if not quiet:
-        _print_results(list(results))
-
-    status_json = {
-        r["name"]: {
-            "status": "pass" if r["status"] == "ok" else "fail",
-            "types": r["types"],
-            "error": r["error"],
-            "latency_ms": r["latency_ms"],
-        }
-        for r in results
-    }
+    status_json = {}
+    async for result in iter_provider_results():
+        status_json[result["name"]] = _status_json_entry(result)
 
     return status_json

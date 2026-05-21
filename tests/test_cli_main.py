@@ -42,6 +42,18 @@ class TestArgsToArgv(unittest.TestCase):
         self.assertIn("-dc", argv)
 
 
+class TestLoadCliDotenv(unittest.TestCase):
+    def test_loads_dotenv_from_current_working_directory(self):
+        from calibrate import cli
+
+        with patch.object(cli, "find_dotenv", return_value="/project/src/.env") as find, \
+             patch.object(cli, "load_dotenv") as load:
+            cli._load_cli_dotenv()
+
+        find.assert_called_once_with(usecwd=True)
+        load.assert_called_once_with("/project/src/.env", override=True)
+
+
 class TestLaunchInkUI(unittest.TestCase):
     def test_no_node(self):
         from calibrate import cli
@@ -377,12 +389,12 @@ class TestMainDispatch(unittest.TestCase):
                 ])
 
     def test_status_default(self):
-        with patch("calibrate.status.main",
+        with patch("calibrate.status.run_status_live",
                    AsyncMock(return_value={"openai": {"status": "pass"}})):
             self._run_with_argv(["calibrate", "status"])
 
     def test_status_table(self):
-        with patch("calibrate.status.main",
+        with patch("calibrate.status.run_status_live",
                    AsyncMock(return_value={"openai": {"status": "pass"}})):
             self._run_with_argv(["calibrate", "status", "--table"])
 

@@ -23,7 +23,7 @@ import runpy
 import os
 import json
 from importlib.metadata import version as get_version
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 
 def _args_to_argv(args, exclude_keys=None, flag_mapping=None):
@@ -57,6 +57,12 @@ def _args_to_argv(args, exclude_keys=None, flag_mapping=None):
             argv.extend([flag, str(value)])
 
     return argv
+
+
+def _load_cli_dotenv() -> None:
+    """Load .env from the directory where the calibrate command is run."""
+    dotenv_path = find_dotenv(usecwd=True)
+    load_dotenv(dotenv_path, override=True)
 
 
 def _launch_ink_ui(mode: str):
@@ -146,7 +152,7 @@ def _run_agent_verify(
 def main():
     """Main CLI entry point that dispatches to component-specific scripts."""
     # Load environment variables from .env file
-    load_dotenv(override=True)
+    _load_cli_dotenv()
 
     parser = argparse.ArgumentParser(
         prog="calibrate",
@@ -727,12 +733,10 @@ Examples:
             asyncio.run(agent_main())
 
     elif args.component == "status":
-        from calibrate.status import main as status_main
+        from calibrate.status import run_status_live
 
         table_mode = getattr(args, "table", False)
-        result = asyncio.run(status_main(quiet=not table_mode))
-        if not table_mode:
-            print(json.dumps(result, indent=2))
+        asyncio.run(run_status_live(table=table_mode))
 
     elif args.component == "agent":
         if args.command == "test":
