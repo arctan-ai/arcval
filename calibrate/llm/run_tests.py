@@ -845,49 +845,38 @@ def _param_path(record: dict, tool: Optional[str]) -> str:
 
 
 def _render_failing_param_line(record: dict, *, tool: Optional[str] = None) -> str:
-    """One ``  path: detail`` line for a failing parameter record."""
+    """One ``  ❌ path: detail`` line for a failing parameter record."""
     path = _param_path(record, tool)
     if record.get("missing"):
-        return f"  {path}: {record['reasoning']}"
+        return f"  ❌ {path}: {record['reasoning']}"
     if record["match_type"] == "llm_judge":
-        return f"  {path}: criteria not met — {record.get('reasoning', '')}"
-    return f"  {path}: {record.get('reasoning', '')}"
+        return f"  ❌ {path}: criteria not met — {record.get('reasoning', '')}"
+    return f"  ❌ {path}: {record.get('reasoning', '')}"
 
 
-def _matched_exact_line(records: List[dict], *, tool: Optional[str] = None) -> Optional[str]:
-    """A single line naming the exact parameters whose values matched, or ``None``.
-
-    When ``tool`` is given each name is prefixed ``tool.param`` so the line is
-    unambiguous across multiple tool calls.
-    """
-    names = [
-        _param_path(r, tool)
-        for r in records
-        if r["match_type"] == "exact" and r.get("match")
-    ]
-    if not names:
-        return None
-    return f"  {', '.join(names)}: values match the expected values"
+def _render_passing_param_line(record: dict, *, tool: Optional[str] = None) -> str:
+    """One ``  ✅ path: detail`` line for a passing parameter record."""
+    path = _param_path(record, tool)
+    if record["match_type"] == "llm_judge":
+        return f"  ✅ {path}: criteria met — {record.get('reasoning', '')}"
+    return f"  ✅ {path}: values match the expected values"
 
 
 def _detailed_call_lines(records: List[dict], *, tool: Optional[str] = None) -> List[str]:
-    """Full per-parameter breakdown for a call that involved an ``llm_judge`` param.
+    """Full per-parameter breakdown for a call's arguments.
 
-    Order: the exact-match summary line first, then each satisfied ``llm_judge``
-    parameter, then every failing parameter (exact or judged). Used for both the
-    all-passed reasoning and the per-call mismatch message so the agent's output
-    is reported the same way whether the call passed or failed.
+    Failures (``❌``) are rendered first so the things that need attention are
+    surfaced at the top, followed by passes (``✅``). Used for both the
+    all-passed reasoning and the per-call mismatch message so the agent's
+    output is reported the same way whether the call passed or failed.
     """
     lines: List[str] = []
-    matched = _matched_exact_line(records, tool=tool)
-    if matched:
-        lines.append(matched)
-    for r in records:
-        if r["match_type"] == "llm_judge" and r.get("match"):
-            lines.append(f"  {_param_path(r, tool)}: criteria met — {r.get('reasoning', '')}")
     for r in records:
         if not r.get("match"):
             lines.append(_render_failing_param_line(r, tool=tool))
+    for r in records:
+        if r.get("match"):
+            lines.append(_render_passing_param_line(r, tool=tool))
     return lines
 
 
@@ -951,10 +940,7 @@ async def _tool_call_arguments_eval_async(
     if not failures:
         return {"message": None, "records": records, "had_llm": had_llm}
 
-    if had_llm:
-        body = _detailed_call_lines(records)
-    else:
-        body = [_render_failing_param_line(r) for r in failures]
+    body = _detailed_call_lines(records)
     return {
         "message": header + "\n" + "\n".join(body),
         "records": records,

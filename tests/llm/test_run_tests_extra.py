@@ -651,6 +651,71 @@ class TestEvaluateToolCallsCriteria(unittest.TestCase):
         self.assertIn("reads as friendly", result["reasoning"])
 
 
+class TestArgumentLevelTicksAndCrosses(unittest.TestCase):
+    @staticmethod
+    def _judge_returning(match, reasoning="because"):
+        async def fake_text_judge(evaluators, user_prompt, *a, **k):
+            return {evaluators[0]["name"]: {"match": match, "reasoning": reasoning}}
+        return fake_text_judge
+
+    def test_failures_listed_before_passes_with_emoji_prefixes(self):
+        from calibrate.llm.run_tests import evaluate_tool_calls
+
+        with patch(
+            "calibrate.llm.run_tests.text_judge",
+            side_effect=self._judge_returning(True, "ok"),
+        ):
+            result = asyncio.run(evaluate_tool_calls(
+                [{"tool": "a", "arguments": {"id": 9, "ok": 1, "note": "g"}}],
+                [{"tool": "a", "arguments": {
+                    "id": 7,
+                    "ok": 1,
+                    "note": {"match_type": "llm_judge", "criteria": "positive"}}}],
+            ))
+        self.assertFalse(result["passed"])
+        reasoning = result["reasoning"]
+        self.assertIn("❌ id:", reasoning)
+        self.assertIn("✅ ok:", reasoning)
+        self.assertIn("✅ note:", reasoning)
+        # All ❌ lines must appear before any ✅ line.
+        first_pass = reasoning.find("✅")
+        last_fail = reasoning.rfind("❌")
+        self.assertGreater(first_pass, last_fail)
+
+    def test_exact_only_failure_includes_passing_args_with_tick(self):
+        from calibrate.llm.run_tests import evaluate_tool_calls
+
+        result = asyncio.run(evaluate_tool_calls(
+            [{"tool": "a", "arguments": {"x": 1, "y": 9}}],
+            [{"tool": "a", "arguments": {"x": 1, "y": 2}}],
+        ))
+        self.assertFalse(result["passed"])
+        reasoning = result["reasoning"]
+        self.assertIn("❌ y:", reasoning)
+        self.assertIn("✅ x:", reasoning)
+        self.assertLess(reasoning.find("❌ y:"), reasoning.find("✅ x:"))
+
+    def test_pass_with_judge_uses_tick_prefix(self):
+        from calibrate.llm.run_tests import evaluate_tool_calls
+
+        with patch(
+            "calibrate.llm.run_tests.text_judge",
+            side_effect=self._judge_returning(True, "reads as friendly"),
+        ):
+            result = asyncio.run(evaluate_tool_calls(
+                [{"tool": "send_sms", "arguments": {"id": 7, "message": "Hi!"}}],
+                [{"tool": "send_sms", "arguments": {
+                    "id": 7,
+                    "message": {"match_type": "llm_judge",
+                                "criteria": "a friendly greeting"}}}],
+            ))
+        self.assertTrue(result["passed"])
+        self.assertIn("✅ id:", result["reasoning"])
+        self.assertIn("✅ message:", result["reasoning"])
+        # No failure markers when everything passes.
+        self.assertNotIn("❌", result["reasoning"])
+
+
 class TestToolCallAsyncMatchers(unittest.TestCase):
     def test_pair_async_wrong_tool(self):
         from calibrate.llm.run_tests import _tool_call_pair_mismatch_async
