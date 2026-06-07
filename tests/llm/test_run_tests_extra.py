@@ -646,7 +646,7 @@ class TestEvaluateToolCallsCriteria(unittest.TestCase):
             "The agent's tools calls matches the expected tool calls",
             result["reasoning"],
         )
-        self.assertIn("id: values match the expected values", result["reasoning"])
+        self.assertIn("id: value matches the expected value", result["reasoning"])
         self.assertIn("message: criteria met", result["reasoning"])
         self.assertIn("reads as friendly", result["reasoning"])
 
@@ -874,7 +874,7 @@ class TestNestedToolCallCriteria(unittest.TestCase):
                 },
             ],
         )
-        self.assertIn("patient.name: values match the expected values", result["reasoning"])
+        self.assertIn("patient.name: value matches the expected value", result["reasoning"])
         self.assertIn("patient.note", result["reasoning"])
         # The judge prompt should carry the dotted path as the argument name.
         prompt = mock_judge.call_args.kwargs.get("user_prompt") or mock_judge.call_args.args[1]
@@ -978,7 +978,7 @@ class TestNestedToolCallCriteria(unittest.TestCase):
                 ],
             ))
         self.assertTrue(result["passed"])
-        self.assertIn("log.id: values match the expected values", result["reasoning"])
+        self.assertIn("log.id: value matches the expected value", result["reasoning"])
         self.assertIn("log.note: criteria met", result["reasoning"])
         self.assertIn("sms.msg: criteria met", result["reasoning"])
 

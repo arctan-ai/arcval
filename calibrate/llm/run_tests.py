@@ -859,7 +859,7 @@ def _render_passing_param_line(record: dict, *, tool: Optional[str] = None) -> s
     path = _param_path(record, tool)
     if record["match_type"] == "llm_judge":
         return f"  ✅ {path}: criteria met — {record.get('reasoning', '')}"
-    return f"  ✅ {path}: values match the expected values"
+    return f"  ✅ {path}: value matches the expected value"
 
 
 def _detailed_call_lines(records: List[dict], *, tool: Optional[str] = None) -> List[str]:
@@ -1028,7 +1028,7 @@ async def evaluate_tool_calls(output_tool_calls, evaluation_tool_calls):
       flat ``"The agent's tools calls matches the expected tool calls"``.
     - Any ``llm_judge`` parameter involved → the verdict is spelled out: each
       judged parameter's met/not-met reasoning plus a line stating that the
-      exact-matched parameters' values match the expected values (see
+      exact-matched parameters' values match the expected value (see
       :func:`_consolidated_pass_reasoning` / :func:`_detailed_call_lines`).
     """
     evaluation_sorted = sort_tool_calls(evaluation_tool_calls or [])
