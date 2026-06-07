@@ -133,6 +133,38 @@ class TestRenderEvaluator(unittest.TestCase):
         self.assertEqual(ev["system_prompt"], "Evaluate: {{criteria}}")
 
 
+class TestToolCallParamEvaluator(unittest.TestCase):
+    def test_default_without_override(self):
+        from calibrate.judges import (
+            tool_call_param_evaluator,
+            DEFAULT_TOOL_CALL_PARAM_EVALUATOR,
+        )
+
+        ev = tool_call_param_evaluator()
+        self.assertEqual(ev["name"], "tool_call_parameter")
+        self.assertEqual(ev["type"], "binary")
+        self.assertEqual(
+            ev["judge_model"], DEFAULT_TOOL_CALL_PARAM_EVALUATOR["judge_model"]
+        )
+        self.assertIn("{{criteria}}", ev["system_prompt"])
+
+    def test_judge_model_override(self):
+        from calibrate.judges import tool_call_param_evaluator
+
+        ev = tool_call_param_evaluator("openai/gpt-4.1")
+        self.assertEqual(ev["judge_model"], "openai/gpt-4.1")
+
+    def test_does_not_mutate_default(self):
+        from calibrate.judges import (
+            tool_call_param_evaluator,
+            DEFAULT_TOOL_CALL_PARAM_EVALUATOR,
+        )
+
+        original = dict(DEFAULT_TOOL_CALL_PARAM_EVALUATOR)
+        tool_call_param_evaluator("some/other-model")
+        self.assertEqual(DEFAULT_TOOL_CALL_PARAM_EVALUATOR, original)
+
+
 # ---------------------------------------------------------------------------
 # Tool-name sanitization and API result shape
 # ---------------------------------------------------------------------------
@@ -254,6 +286,69 @@ def _mock_instructor_chat_completions(return_values):
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=parsed_objs)
     return client
+
+
+class TestJudgeIOLogging(unittest.IsolatedAsyncioTestCase):
+    """The judge writes its prompt/response into the bound run log file."""
+
+    async def test_logs_judge_io_to_bound_file(self):
+        import tempfile, os
+        from calibrate.utils import provider_log_file
+
+        client = _mock_instructor_chat_completions(
+            [{"reasoning": "looks right", "match": True}]
+        )
+        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".log")
+        f.close()
+        token = provider_log_file.set(f.name)
+        try:
+            with patch(
+                "calibrate.judges.instructor.apatch", return_value=client
+            ), patch(
+                "calibrate.judges._build_openrouter_client", return_value=MagicMock()
+            ):
+                await text_judge(
+                    evaluators=[
+                        {
+                            "name": "accuracy",
+                            "system_prompt": "Evaluate accuracy of: PLACEHOLDER",
+                            "judge_model": "openai/gpt-4.1",
+                        }
+                    ],
+                    user_prompt="my-context",
+                )
+            contents = open(f.name).read()
+        finally:
+            provider_log_file.reset(token)
+            os.unlink(f.name)
+
+        self.assertIn("judge call", contents)
+        self.assertIn("accuracy", contents)            # evaluator name
+        self.assertIn("openai/gpt-4.1", contents)      # model
+        self.assertIn("Evaluate accuracy of", contents)  # system prompt
+        self.assertIn("my-context", contents)          # user input
+        self.assertIn("looks right", contents)         # judge output reasoning
+
+    async def test_no_log_file_does_not_crash(self):
+        from calibrate.utils import provider_log_file
+
+        # Ensure unbound (default None) — judge should run without writing anywhere.
+        self.assertIsNone(provider_log_file.get())
+        client = _mock_instructor_chat_completions(
+            [{"reasoning": "ok", "match": True}]
+        )
+        with patch(
+            "calibrate.judges.instructor.apatch", return_value=client
+        ), patch(
+            "calibrate.judges._build_openrouter_client", return_value=MagicMock()
+        ):
+            result = await text_judge(
+                evaluators=[
+                    {"name": "x", "system_prompt": "p", "judge_model": "m"}
+                ],
+                user_prompt="ctx",
+            )
+        self.assertEqual(result, {"x": {"reasoning": "ok", "match": True}})
 
 
 class TestTextJudge(unittest.IsolatedAsyncioTestCase):

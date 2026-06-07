@@ -48,6 +48,7 @@ import instructor
 from pydantic import BaseModel, Field, create_model
 
 from calibrate.langfuse import AsyncOpenAI, observe, langfuse, langfuse_enabled
+from calibrate.utils import log_judge_io
 
 
 # ── OpenRouter configuration ────────────────────────────────────────────────
@@ -94,6 +95,21 @@ DEFAULT_LLM_TEST_EVALUATOR = {
         "along with the response of the agent to the final user message.\n\n"
         "You need to evaluate if the response adheres to the evaluation "
         "criteria:\n\n{{criteria}}"
+    ),
+    "judge_model": DEFAULT_TEXT_JUDGE_MODEL,
+    "type": BINARY,
+}
+
+DEFAULT_TOOL_CALL_PARAM_EVALUATOR = {
+    "name": "tool_call_parameter",
+    "system_prompt": (
+        "You are a highly accurate evaluator checking whether the value an "
+        "agent produced for a single tool-call argument satisfies a given "
+        "criteria.\n\n"
+        "You will be given the tool name, the argument name, and the actual "
+        "value the agent produced for that argument.\n\n"
+        "Mark `match` true only if the actual value satisfies the following "
+        "criteria, and false otherwise:\n\n{{criteria}}"
     ),
     "judge_model": DEFAULT_TEXT_JUDGE_MODEL,
     "type": BINARY,
@@ -355,6 +371,19 @@ def render_template(template: str, arguments: dict) -> str:
     return out
 
 
+def tool_call_param_evaluator(judge_model: Optional[str] = None) -> dict:
+    """Return a copy of the default tool-call parameter evaluator.
+
+    Used by the LLM tool-call test runner to judge a single tool-call argument
+    value against a free-text criteria. ``judge_model``, when provided,
+    overrides the evaluator's default ``judge_model``.
+    """
+    evaluator = dict(DEFAULT_TOOL_CALL_PARAM_EVALUATOR)
+    if judge_model:
+        evaluator["judge_model"] = judge_model
+    return evaluator
+
+
 def render_evaluator(evaluator: dict, arguments: Optional[dict] = None) -> dict:
     """Return a copy of ``evaluator`` with its ``system_prompt`` placeholders filled in."""
     rendered = dict(evaluator)
@@ -396,6 +425,14 @@ async def _judge_one_text(
     )
 
     result = _normalize_judge_api_result(response.model_dump(), Output.__name__)
+
+    log_judge_io(
+        evaluator=evaluator.get("name", ""),
+        model=model,
+        system_prompt=system_prompt,
+        user_input=user_prompt,
+        output=result,
+    )
 
     if langfuse_enabled and langfuse:
         langfuse.update_current_span(
@@ -453,6 +490,14 @@ async def _judge_one_audio(
     )
 
     result = _normalize_judge_api_result(response.model_dump(), Output.__name__)
+
+    log_judge_io(
+        evaluator=evaluator.get("name", ""),
+        model=model,
+        system_prompt=system_prompt,
+        user_input=f"Reference text: {reference_text}\n[audio omitted from log]",
+        output=result,
+    )
 
     if langfuse_enabled and langfuse:
         from calibrate.langfuse import create_langfuse_audio_media

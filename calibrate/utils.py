@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import struct
+import threading
 import wave
 from collections import defaultdict
 from contextvars import ContextVar
@@ -177,6 +178,54 @@ def provider_log(message: object = "", *, to_terminal: bool = True) -> None:
     if log_path:
         with open(log_path, "a") as f:
             f.write(text + "\n")
+
+
+# Serializes concurrent judge-log writes within the process so two judges
+# running at once never split each other's entry.
+_judge_log_lock = threading.Lock()
+
+
+def log_judge_io(
+    *,
+    evaluator: str,
+    model: str,
+    system_prompt: str,
+    user_input: str,
+    output: object,
+) -> None:
+    """Append one judge LLM call's input/output to the active run log file.
+
+    The whole entry is written as a **single atomic append** so concurrent
+    writers (other judges running in parallel, or the run's loguru sink sharing
+    the same file) can never interleave a judge's input and output. Never
+    prints to the terminal. No-op when no log file is bound to the current
+    context, so SDK callers outside a run are unaffected. Used by the judge
+    calls in :mod:`calibrate.judges` so every module (LLM, STT, TTS,
+    simulation) captures judge prompts and responses locally, independent of
+    Langfuse.
+    """
+    log_path = provider_log_file.get()
+    if log_path is None:
+        return
+    block = (
+        "──── judge call ────\n"
+        f"evaluator: {evaluator}\n"
+        f"model: {model}\n"
+        f"system_prompt:\n{system_prompt}\n"
+        f"input:\n{user_input}\n"
+        f"output: {output}\n"
+        "────────────────────\n"
+    )
+    data = block.encode("utf-8", errors="replace")
+    # Single O_APPEND write: the kernel appends each write atomically, and the
+    # lock guards against torn writes if a block ever exceeds the atomic-write
+    # size or another thread logs concurrently.
+    with _judge_log_lock:
+        fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
 
 
 class StreamTee:
