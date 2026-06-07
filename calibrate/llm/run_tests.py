@@ -451,7 +451,7 @@ def get_webhook_tool_names(tools: List[dict]) -> set:
 
 
 def preprocess_conversation_history(
-    chat_history: List[dict], tools: List[dict], strict: bool = True
+    chat_history: List[dict], tools: List[dict]
 ) -> List[dict]:
     """
     Preprocess conversation history to add tool responses for non-webhook tools.
@@ -459,27 +459,15 @@ def preprocess_conversation_history(
     For non-webhook tools that have tool calls but no corresponding tool response,
     this function inserts a default tool response with {"status": "received"}.
 
-    Behavior when a non-webhook tool *already has* a tool response in the
-    conversation depends on ``strict``:
-
-    - ``strict=True`` (default; live test flow): raises ``ValueError``. The live
-      flow assumes structured-output tool responses come from inference, not
-      the dataset, so an existing one is treated as a config error.
-    - ``strict=False`` (eval-only flow): the existing response is left in place
-      and no injection occurs for that tool call. Eval-only datasets carry
-      real captured conversations, including their real tool responses.
+    If a non-webhook tool already has a tool response in the conversation, it is
+    left in place and no injection occurs for that tool call.
 
     Args:
         chat_history: The conversation history to preprocess
         tools: List of tool definition dicts
-        strict: See above.
 
     Returns:
         Preprocessed conversation history with tool responses inserted
-
-    Raises:
-        ValueError: If a non-webhook tool has a manually added tool response
-            and ``strict=True``.
     """
     webhook_tool_names = get_webhook_tool_names(tools)
 
@@ -504,14 +492,7 @@ def preprocess_conversation_history(
                 if tool_name in webhook_tool_names:
                     continue
 
-                # Existing response handling diverges by mode (see docstring).
                 if tool_call_id in existing_tool_response_ids:
-                    if strict:
-                        raise ValueError(
-                            f"Structured output tool '{tool_name}' (tool_call_id: {tool_call_id}) "
-                            f"should not have a manually added tool response in the conversation history. "
-                        )
-                    # Permissive mode: real response is already present; do nothing.
                     continue
 
                 # Insert a default tool response for non-webhook tools
@@ -1806,7 +1787,7 @@ async def run_eval_only_tests(
         )
 
         preprocessed_history = preprocess_conversation_history(
-            test_case["history"], tools, strict=False
+            test_case["history"], tools
         )
         output = item["output"]
         metrics = await evaluate_test_case_output(

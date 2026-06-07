@@ -204,24 +204,7 @@ class TestPreprocessConversationHistory(unittest.TestCase):
         self.assertEqual(result[2]["role"], "tool")
         self.assertEqual(result[2]["tool_call_id"], "call_1")
 
-    def test_strict_raises_on_existing_response(self):
-        from calibrate.llm.run_tests import preprocess_conversation_history
-
-        tools = [{"name": "fn1", "type": "structured"}]
-        history = [
-            {
-                "role": "assistant",
-                "tool_calls": [{
-                    "id": "call_1",
-                    "function": {"name": "fn1", "arguments": "{}"},
-                }],
-            },
-            {"role": "tool", "tool_call_id": "call_1", "content": "{}"},
-        ]
-        with self.assertRaises(ValueError):
-            preprocess_conversation_history(history, tools, strict=True)
-
-    def test_non_strict_keeps_existing(self):
+    def test_keeps_existing_response(self):
         from calibrate.llm.run_tests import preprocess_conversation_history
 
         tools = [{"name": "fn1", "type": "structured"}]
@@ -235,9 +218,9 @@ class TestPreprocessConversationHistory(unittest.TestCase):
             },
             {"role": "tool", "tool_call_id": "call_1", "content": "real"},
         ]
-        result = preprocess_conversation_history(history, tools, strict=False)
-        # No injection — length stays at 2
+        result = preprocess_conversation_history(history, tools)
         self.assertEqual(len(result), 2)
+        self.assertEqual(result[1]["content"], "real")
 
     def test_skip_webhook(self):
         from calibrate.llm.run_tests import preprocess_conversation_history
@@ -2018,8 +2001,8 @@ class TestConversationEvalOnlyNotMutated(unittest.IsolatedAsyncioTestCase):
         from calibrate.llm.run_tests import run_eval_only_tests
         from calibrate.llm import run_tests as RT
 
-        # Same preprocess as response eval-only (strict=False): missing tool
-        # responses are filled in before judging.
+        # Same preprocess as response eval-only: missing tool responses are
+        # filled in before judging; existing ones are left intact.
         history = [
             {"role": "user", "content": "check my order"},
             {
