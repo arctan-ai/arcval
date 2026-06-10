@@ -75,8 +75,7 @@ async def _judge_and_emit(
         transcript, evaluators, fallback_model=fallback_judge_model
     )
     evaluation_results = [
-        _build_evaluation_result(ev, llm_judge_result[ev["name"]])
-        for ev in evaluators
+        _build_evaluation_result(ev, llm_judge_result[ev["name"]]) for ev in evaluators
     ]
     for row in evaluation_results:
         for line in format_evaluation_result_lines(row):
@@ -102,6 +101,8 @@ def _build_evaluation_result(evaluator: dict, judge_row: dict) -> dict:
         result["scale_min"] = int(evaluator["scale_min"])
         result["scale_max"] = int(evaluator["scale_max"])
     return result
+
+
 import pandas as pd
 import numpy as np
 
@@ -111,7 +112,7 @@ from calibrate.utils import patch_langfuse_trace
 
 IS_TRACING_ENABLED = bool(os.getenv("ENABLE_TRACING"))
 
-DEFAULT_SIMULATION_PARALLEL = 1
+DEFAULT_SIMULATION_PARALLEL = 2
 
 
 def _resolve_simulation_parallel(cli_value: Optional[int] = None) -> int:
@@ -127,6 +128,7 @@ def _resolve_simulation_parallel(cli_value: Optional[int] = None) -> int:
         except ValueError:
             pass
     return DEFAULT_SIMULATION_PARALLEL
+
 
 # Initialize tracing if enabled
 if IS_TRACING_ENABLED:
@@ -1016,9 +1018,7 @@ async def main():
         sys.exit(1)
 
 
-def _aggregate_and_write_simulation_results(
-    results: list, output_dir: str
-) -> list:
+def _aggregate_and_write_simulation_results(results: list, output_dir: str) -> list:
     """Aggregate per-simulation results into ``results.csv`` and ``metrics.json``.
 
     Each non-Exception result is a ``(simulation_metrics, evaluation_results)``
@@ -1086,7 +1086,10 @@ def validate_simulation_eval_only_dataset(dataset: object) -> tuple[bool, str]:
     Returns ``(is_valid, error_message)``.
     """
     if not isinstance(dataset, list):
-        return False, "Dataset must be a JSON list of {conversation_history, name?} items"
+        return (
+            False,
+            "Dataset must be a JSON list of {conversation_history, name?} items",
+        )
 
     for i, item in enumerate(dataset):
         if not isinstance(item, dict):
