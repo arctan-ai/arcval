@@ -4,7 +4,7 @@ import re
 import sys
 import uuid
 from collections import defaultdict
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, List, Optional, TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -232,6 +232,53 @@ class LLMInferenceError(Exception):
 import threading
 
 _logger_lock = threading.Lock()
+
+# Default number of test cases to evaluate concurrently within a single model.
+DEFAULT_TEST_PARALLEL = 4
+
+
+def _resolve_test_parallel(cli_value: Optional[int] = None) -> int:
+    """Resolve max test-case concurrency: CLI flag > CALIBRATE_TEST_PARALLEL > default."""
+    if cli_value is not None and cli_value > 0:
+        return cli_value
+    env_value = os.getenv("CALIBRATE_TEST_PARALLEL")
+    if env_value:
+        try:
+            parsed = int(env_value)
+            if parsed > 0:
+                return parsed
+        except ValueError:
+            pass
+    return DEFAULT_TEST_PARALLEL
+
+
+async def _run_items_parallel(
+    items: List[Any],
+    process: "Callable[[int, Any], Awaitable[dict]]",
+    results_file_path: str,
+    test_parallel: Optional[int] = None,
+) -> List[dict]:
+    """Run ``process(index, item)`` over ``items`` with bounded concurrency.
+
+    Concurrency is capped by ``_resolve_test_parallel(test_parallel)``. Results
+    are collected in input order regardless of completion order, and the
+    partial (in-order) ``results.json`` is rewritten after each item completes.
+    Returns the ordered list of results.
+    """
+    results: List[Optional[dict]] = [None] * len(items)
+    semaphore = asyncio.Semaphore(_resolve_test_parallel(test_parallel))
+    write_lock = asyncio.Lock()
+
+    async def run_one(index: int, item: Any) -> None:
+        async with semaphore:
+            results[index] = await process(index, item)
+            # Save intermediate results as each item completes (in order).
+            async with write_lock:
+                with open(results_file_path, "w") as f:
+                    json.dump([r for r in results if r is not None], f, indent=4)
+
+    await asyncio.gather(*[run_one(i, item) for i, item in enumerate(items)])
+    return results
 
 
 # Strip ANSI color codes when mirroring terminal output to results.log
@@ -1517,6 +1564,7 @@ async def run_model_tests(
     provider: str,
     config: dict,
     output_dir: str,
+    test_parallel: Optional[int] = None,
 ) -> dict:
     """Run tests for a single model and return results.
 
@@ -1525,6 +1573,7 @@ async def run_model_tests(
         provider: LLM provider (openai or openrouter)
         config: Test configuration dict
         output_dir: Base output directory - results saved to output_dir/model_name/
+        test_parallel: Max test cases to evaluate concurrently.
     """
     # Build model folder name: for openai provider, prefix with provider name
     save_folder_name = f"{provider}/{model}" if provider == "openai" else f"{model}"
@@ -1556,7 +1605,6 @@ async def run_model_tests(
     _print_and_log(f"\033[94mModel: {label}\033[0m", print_log_save_path)
     _print_and_log(f"\033[94m{'='*60}\033[0m\n", print_log_save_path)
 
-    results = []
     results_file_path = join(model_output_dir, "results.json")
 
     unique_id = str(uuid.uuid4())
@@ -1567,7 +1615,7 @@ async def run_model_tests(
     tools = config.get("tools") or []
     system_prompt = config.get("system_prompt", "")
 
-    for test_case_index, test_case in enumerate(config["test_cases"]):
+    async def process(test_case_index: int, test_case: dict) -> dict:
         evaluation = test_case["evaluation"]
         preprocessed_history = preprocess_conversation_history(
             test_case["history"], tools
@@ -1614,11 +1662,11 @@ async def run_model_tests(
         if "id" in test_case:
             result["test_case_id"] = test_case["id"]
         result["test_case"] = test_case
-        results.append(result)
+        return result
 
-        # Save intermediate results after each test case
-        with open(results_file_path, "w") as f:
-            json.dump(results, f, indent=4)
+    results = await _run_items_parallel(
+        config["test_cases"], process, results_file_path, test_parallel
+    )
 
     total_passed = sum(1 for result in results if result["metrics"]["passed"])
     total_tests = len(results)
@@ -1740,6 +1788,7 @@ async def run_eval_only_tests(
     config: dict,
     dataset: list[dict],
     output_dir: str,
+    test_parallel: Optional[int] = None,
 ) -> dict:
     """Run evaluators on a pre-existing dataset of (test_case, output) pairs.
 
@@ -1766,12 +1815,11 @@ async def run_eval_only_tests(
 
     _print_and_log("\n\033[94mEval-only\033[0m\n", print_log_save_path)
 
-    results: list[dict] = []
     results_file_path = join(output_dir, "results.json")
 
     tools = config.get("tools", []) or []
 
-    for i, item in enumerate(dataset):
+    async def process(i: int, item: dict) -> dict:
         test_case = item["test_case"]
         evaluation = test_case["evaluation"]
         resolved_evaluators = (
@@ -1811,10 +1859,11 @@ async def run_eval_only_tests(
         result = {"output": output, "metrics": metrics, "test_case": test_case}
         if "id" in test_case:
             result["test_case_id"] = test_case["id"]
-        results.append(result)
+        return result
 
-        with open(results_file_path, "w") as f:
-            json.dump(results, f, indent=4)
+    results = await _run_items_parallel(
+        dataset, process, results_file_path, test_parallel
+    )
 
     passed, total = _write_test_results_outputs(results, output_dir, name_to_evaluator)
     pct = (passed / total * 100) if total else 0.0
@@ -1865,6 +1914,13 @@ async def main():
         help="LLM provider to use (openai or openrouter)",
     )
     parser.add_argument(
+        "-n",
+        "--parallel",
+        type=int,
+        default=None,
+        help="Number of test cases to evaluate in parallel",
+    )
+    parser.add_argument(
         "--eval-only",
         action="store_true",
         help="Skip LLM inference and run evaluators on a dataset of (test_case, output) pairs",
@@ -1907,6 +1963,7 @@ async def main():
             config=config,
             dataset=dataset,
             output_dir=args.output_dir,
+            test_parallel=args.parallel,
         )
         passed = result["passed"]
         total = result["total"]
@@ -1935,6 +1992,7 @@ async def main():
         provider=args.provider,
         config=config,
         output_dir=args.output_dir,
+        test_parallel=args.parallel,
     )
 
     # Print summary
