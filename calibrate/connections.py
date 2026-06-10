@@ -23,11 +23,24 @@ Usage:
 
 from dataclasses import dataclass, field
 from typing import Optional
+import backoff
 import httpx
 
 
 # Default messages used by verify() when no custom input is provided
 _DEFAULT_VERIFY_MESSAGES = [{"role": "user", "content": "Hello, are you there?"}]
+
+# Retry policy for transient agent failures. A flaky upstream (502/503/504 from
+# a reverse proxy, a brief overload returning 429, or a dropped connection)
+# should not abort a whole eval run — retry with exponential backoff. Permanent
+# failures (4xx other than 429, invalid JSON) are NOT retried.
+_RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
+_MAX_ATTEMPTS = 4
+_BACKOFF_BASE_SECONDS = 1.0
+
+
+class _AgentRequestError(Exception):
+    """A transient request failure that exhausted all retry attempts."""
 
 
 @dataclass
@@ -117,26 +130,15 @@ class TextAgentConnection:
         """
         input_messages = messages if messages is not None else _DEFAULT_VERIFY_MESSAGES
 
-        # ── 1. POST to endpoint ──────────────────────────────────────────
+        body: dict = {"messages": input_messages}
+        if model is not None:
+            body["model"] = model
+
+        # ── 1. POST to endpoint (retry transient failures) ───────────────
         try:
-            req_headers = {"Content-Type": "application/json"}
-            if self.headers:
-                req_headers.update(self.headers)
-
-            body: dict = {"messages": input_messages}
-            if model is not None:
-                body["model"] = model
-
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(
-                    self.url,
-                    json=body,
-                    headers=req_headers,
-                )
-        except httpx.ConnectError as e:
-            return {"ok": False, "error": f"Could not connect to endpoint: {e}"}
-        except httpx.TimeoutException:
-            return {"ok": False, "error": "Request timed out (30s)"}
+            resp = await self._post_with_retry(body, timeout=30.0)
+        except _AgentRequestError as e:
+            return {"ok": False, "error": f"{e} (after {_MAX_ATTEMPTS} attempts)"}
         except Exception as e:
             return {"ok": False, "error": f"Unexpected error during request: {e}"}
 
@@ -243,27 +245,18 @@ class TextAgentConnection:
 
         Raises:
             RuntimeError: On connection error, timeout, non-200 status, or
-                invalid JSON response.
+                invalid JSON response. Transient failures (connection errors,
+                timeouts, and HTTP 429/502/503/504) are retried with
+                exponential backoff before giving up.
         """
-        req_headers = {"Content-Type": "application/json"}
-        if self.headers:
-            req_headers.update(self.headers)
-
         body: dict = {"messages": messages}
         if model is not None:
             body["model"] = model
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    self.url,
-                    json=body,
-                    headers=req_headers,
-                )
-        except httpx.ConnectError as e:
-            raise RuntimeError(f"Could not connect to agent at {self.url}: {e}") from e
-        except httpx.TimeoutException:
-            raise RuntimeError(f"Agent request timed out (60s): {self.url}") from None
+            resp = await self._post_with_retry(body, timeout=60.0)
+        except _AgentRequestError as e:
+            raise RuntimeError(f"{e} (after {_MAX_ATTEMPTS} attempts)") from None
         except Exception as e:
             raise RuntimeError(
                 f"Unexpected error calling agent at {self.url}: {e}"
@@ -285,6 +278,45 @@ class TextAgentConnection:
             "response": data.get("response"),
             "tool_calls": data.get("tool_calls", []),
         }
+
+    @backoff.on_exception(
+        backoff.expo,
+        _AgentRequestError,
+        max_tries=_MAX_ATTEMPTS,
+        base=2,
+        factor=_BACKOFF_BASE_SECONDS,
+        jitter=None,
+    )
+    async def _post_with_retry(self, body: dict, timeout: float) -> "httpx.Response":
+        """POST ``body`` to the endpoint, retrying transient failures.
+
+        Connection errors, timeouts, and HTTP 429/502/503/504 raise
+        ``_AgentRequestError`` and are retried with exponential backoff. Any
+        other status (200 or a permanent 4xx/5xx) is returned for the caller to
+        handle. After ``_MAX_ATTEMPTS`` transient failures the last
+        ``_AgentRequestError`` propagates.
+        """
+        req_headers = {"Content-Type": "application/json"}
+        if self.headers:
+            req_headers.update(self.headers)
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(self.url, json=body, headers=req_headers)
+        except httpx.ConnectError as e:
+            raise _AgentRequestError(
+                f"Could not connect to agent at {self.url}: {e}"
+            ) from e
+        except httpx.TimeoutException as e:
+            raise _AgentRequestError(
+                f"Agent request timed out ({timeout:.0f}s): {self.url}"
+            ) from e
+
+        if resp.status_code in _RETRYABLE_STATUS:
+            raise _AgentRequestError(
+                f"Agent returned HTTP {resp.status_code}: {resp.text[:500]}"
+            )
+        return resp
 
 
 __all__ = ["TextAgentConnection"]
