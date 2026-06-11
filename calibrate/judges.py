@@ -120,7 +120,7 @@ DEFAULT_GENERAL_TASK_EVALUATOR = {
     "system_prompt": (
         "You are a highly accurate evaluator assessing the output produced for "
         "a task.\n\n"
-        "You will be given the task input (when one is provided) and the output "
+        "You will be given the task input and the output "
         "produced for it. Judge the output on its own merits — do not assume the "
         "input is a conversation or that the output is a reply to a user.\n\n"
         "Mark `match` true only if the output satisfies the following criteria, "
@@ -406,6 +406,27 @@ def render_evaluator(evaluator: dict, arguments: Optional[dict] = None) -> dict:
         evaluator.get("system_prompt", ""), arguments or {}
     )
     return rendered
+
+
+def ensure_known_evaluator_names(referenced, known, context: str = "") -> None:
+    """Raise ``ValueError`` if any name in ``referenced`` is not in ``known``.
+
+    Shared guard for the places that attach per-evaluator ``arguments`` by name
+    (``llm`` test-case criteria, ``general`` row arguments) so an unknown /
+    misspelled evaluator name fails loudly instead of being silently ignored.
+
+    Args:
+        referenced: Iterable of evaluator names referenced by the caller.
+        known: Container of valid evaluator names (e.g. a set or name→evaluator dict).
+        context: Optional prefix for the error (e.g. ``"Row 3 arguments"``).
+    """
+    unknown = sorted({name for name in referenced if name not in known})
+    if unknown:
+        prefix = f"{context}: " if context else ""
+        raise ValueError(
+            f"{prefix}unknown evaluator(s) {unknown} referenced. Define them "
+            f"under config.evaluators (known: {sorted(known)})."
+        )
 
 
 def _model_for(evaluator: dict, fallback: str) -> str:
