@@ -656,8 +656,14 @@ def _tool_call_arguments_diff_lines(
     return lines
 
 
-def _tool_call_arguments_mismatch_message(expected, actual) -> str:
-    """Build a multi-line tool-call arguments mismatch reason."""
+def _tool_call_arguments_mismatch_message(expected, actual) -> Optional[str]:
+    """Build a multi-line tool-call arguments mismatch reason, or ``None``.
+
+    Returns ``None`` when two argument dicts have no differences under our
+    matching rules — i.e. the only divergences are wildcard ("any") parameters,
+    which produce no diff lines. This mirrors the async eval path so the
+    leaderboard's per-slot pass calculation agrees with it.
+    """
     header = "Tool call arguments mismatch:"
     if not isinstance(expected, dict):
         return (
@@ -673,11 +679,7 @@ def _tool_call_arguments_mismatch_message(expected, actual) -> str:
         )
     detail_lines = _tool_call_arguments_diff_lines(expected, actual)
     if not detail_lines:
-        return (
-            f"{header}\n"
-            f"  expected arguments: {expected!r}\n"
-            f"  actual arguments: {actual!r}"
-        )
+        return None
     return header + "\n" + "\n".join(detail_lines)
 
 
@@ -698,10 +700,23 @@ def _tool_call_pair_mismatch(
     out_args = output_tool_call.get("arguments")
     if out_args == exp_args:
         return None
+    # Returns None when the only differences are wildcard ("any") parameters.
     return _tool_call_arguments_mismatch_message(exp_args, out_args)
 
 
-# ── Per-parameter criteria specs (exact match vs. LLM judge) ─────────────────
+# ── Per-parameter criteria specs (exact match, LLM judge, or "any" wildcard) ─
+
+
+def _is_any_spec(value) -> bool:
+    """True when an expected argument value is the ``any`` wildcard spec.
+
+    A parameter whose expected value is ``{"match_type": "any"}`` is ignored
+    entirely: it need not appear in the produced tool call, and whatever value it
+    carries is accepted. This lets a test pin down the arguments that matter while
+    leaving free-form or non-deterministic ones unconstrained. A plain ``"any"``
+    string is *not* special — it is an ordinary literal, matched exactly.
+    """
+    return isinstance(value, dict) and value.get("match_type") == "any"
 
 
 def _param_criteria_spec(value, key: str) -> Optional[dict]:
@@ -712,6 +727,9 @@ def _param_criteria_spec(value, key: str) -> Optional[dict]:
 
         {"match_type": "llm_judge", "criteria": "...", "judge_model": "..."}
         {"match_type": "exact", "value": <literal>}
+
+    The ``{"match_type": "any"}`` wildcard is recognized and skipped by
+    :func:`_is_any_spec` before this point, so it never reaches here.
 
     Returns the normalized spec, or ``None`` when ``value`` is an ordinary
     literal (the default, exact-match behavior). Raises ``ValueError`` for a
@@ -739,8 +757,8 @@ def _param_criteria_spec(value, key: str) -> Optional[dict]:
             )
         return {"match_type": "exact", "value": value["value"]}
     raise ValueError(
-        f"Tool-call parameter '{key}': match_type must be 'exact' or "
-        f"'llm_judge' (got {match_type!r})."
+        f"Tool-call parameter '{key}': match_type must be 'exact', "
+        f"'llm_judge', or 'any' (got {match_type!r})."
     )
 
 
@@ -812,7 +830,10 @@ def _collect_arg_diffs(
 ) -> None:
     """Recursively diff expected vs. actual argument dicts.
 
-    The single walk behind both exact and criteria-aware matching:
+    The single walk behind both exact and criteria-aware matching. In either
+    mode a ``{"match_type": "any"}`` value is a wildcard: the parameter is
+    skipped entirely (no line, no record) regardless of whether it appears in
+    ``actual``.
 
     - ``criteria_aware=True`` (default): a value may be a criteria spec — an
       ``llm_judge`` field is queued in ``judge_jobs`` (judged after the walk; a
@@ -845,6 +866,13 @@ def _collect_arg_diffs(
                 lines,
                 records,
             )
+            continue
+
+        # A ``{"match_type": "any"}`` expected value is a wildcard: skip the
+        # parameter entirely so neither its presence nor its value is checked.
+        # Honored in both exact and criteria-aware walks so the live evaluation
+        # and the leaderboard's per-slot pass calculation agree.
+        if _is_any_spec(expected[key]):
             continue
 
         spec = _param_criteria_spec(expected[key], path) if criteria_aware else None
