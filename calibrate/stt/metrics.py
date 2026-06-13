@@ -18,6 +18,13 @@ from calibrate.judges import (
     DEFAULT_STT_EVALUATOR,
 )
 from calibrate.langfuse import observe, langfuse, langfuse_enabled
+from calibrate.stt import sarvam_intent_entity
+from calibrate.stt.sarvam_intent_entity import (
+    DEFAULT_INTENT_ENTITY_MODEL,
+    IndicNormalizer,
+    calculate_intent_accuracy,
+    calculate_entity_metrics,
+)
 
 normalizer = BasicTextNormalizer()
 
@@ -175,5 +182,66 @@ async def get_llm_judge_score(
     return {
         "scores": scores,
         "score": overall_score,
+        "per_row": results,
+    }
+
+
+async def get_intent_entity_score(
+    references: List[str],
+    predictions: List[str],
+    language: str = "english",
+    model: str = DEFAULT_INTENT_ENTITY_MODEL,
+) -> dict:
+    """Normalize, judge, and aggregate intent/entity preservation.
+
+    Mirrors Sarvam's flow: reference and prediction are first run through the
+    vendored ``IndicNormalizer``, then each normalized pair is scored by the
+    judge in ``stt/sarvam_intent_entity/judge.py``. Aggregation uses Sarvam's
+    ``calculate_intent_accuracy`` / ``calculate_entity_metrics``. This is the
+    metric root invoked by the eval pipeline, mirroring ``get_wer_score`` /
+    ``get_llm_judge_score``.
+
+    Returns:
+        {
+            "intent": float,          # intent accuracy (mean of 0/1)
+            "entity": float,          # mean entity-preservation fraction
+            "per_row": [ {<IntentEntityResponse fields>}, ... ],
+        }
+
+    ``per_row`` order matches the input order (``asyncio.gather`` preserves
+    coroutine order).
+    """
+    if not references:
+        return {"intent": 0.0, "entity": 0.0, "per_row": []}
+
+    langs = [language] * len(references)
+    normalizer = IndicNormalizer()
+    norm_references = normalizer.normalize_texts(
+        [str(r) for r in references], langs
+    )
+    norm_predictions = normalizer.normalize_texts(
+        [str(p) for p in predictions], langs
+    )
+
+    coroutines = [
+        sarvam_intent_entity.intent_entity_judge(
+            str(reference), str(prediction), model=model, index=i
+        )
+        for i, (reference, prediction) in enumerate(
+            zip(norm_references, norm_predictions)
+        )
+    ]
+
+    results = await tqdm_asyncio.gather(
+        *coroutines,
+        desc="Running intent/entity judge",
+    )
+
+    intent_scores = [int(row["intent_score"]) for row in results]
+    entity_scores = [float(row["entity_score"]) for row in results]
+
+    return {
+        "intent": float(calculate_intent_accuracy(intent_scores)),
+        "entity": float(calculate_entity_metrics(entity_scores)["mean"]),
         "per_row": results,
     }
