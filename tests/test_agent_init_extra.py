@@ -147,6 +147,31 @@ class TestCalibrateInit(unittest.TestCase):
         # Restore module state
         importlib.reload(calibrate)
 
+    def test_submodules_are_lazy(self):
+        # Importing calibrate must NOT eagerly import the heavy submodules,
+        # so a broken optional provider SDK (e.g. deepgram) inside
+        # calibrate.stt can't break `import calibrate` itself.
+        import sys
+        import importlib
+
+        for name in ("calibrate", "calibrate.stt", "calibrate.tts", "calibrate.llm", "calibrate.agent"):
+            sys.modules.pop(name, None)
+
+        import calibrate
+
+        for name in ("calibrate.stt", "calibrate.tts", "calibrate.llm", "calibrate.agent"):
+            self.assertNotIn(name, sys.modules)
+
+        # Submodules remain accessible as attributes (imported on demand).
+        self.assertIs(calibrate.stt, importlib.import_module("calibrate.stt"))
+        self.assertIn("stt", dir(calibrate))
+
+    def test_unknown_attribute_raises(self):
+        import calibrate
+
+        with self.assertRaises(AttributeError):
+            calibrate.does_not_exist
+
 
 if __name__ == "__main__":
     unittest.main()

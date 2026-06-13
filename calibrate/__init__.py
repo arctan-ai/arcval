@@ -45,10 +45,29 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 
-# Lazy imports for submodules
-from calibrate import stt
-from calibrate import tts
-from calibrate import llm
-from calibrate import agent
+# Lazy imports for submodules.
+#
+# Each submodule pulls in heavy, optional provider SDKs (deepgram, cartesia,
+# google-cloud-speech, pipecat, ...). Importing them eagerly means a single
+# broken/incompatible provider dependency makes `import calibrate` fail
+# entirely. Use PEP 562 module-level __getattr__ so a submodule is only
+# imported when it is actually accessed (e.g. `calibrate.stt`), while keeping
+# the same `calibrate.stt` / `from calibrate import stt` access pattern.
+import importlib
+
+_SUBMODULES = ("stt", "tts", "llm", "agent")
+
+
+def __getattr__(name):
+    if name in _SUBMODULES:
+        module = importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(list(globals().keys()) + list(_SUBMODULES))
+
 
 __all__ = ["stt", "tts", "llm", "agent", "__version__"]
