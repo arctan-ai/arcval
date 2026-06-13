@@ -16,6 +16,28 @@ agent simulations — all from a single CLI / Python library.
 The repo also ships an **Ink (React) terminal UI** in `ui/` that is bundled into
 the Python package and launched from the CLI.
 
+## Before making any change
+
+For **every** change, new feature, or modification — no matter how small —
+follow this process before writing code:
+
+1. **Review the existing code thoroughly.** Search the codebase for code or
+   functionality that already does (or partly does) what's being asked. Don't
+   assume something doesn't exist — confirm it.
+2. **Plan the work as parallel, independent agent runs.** Decompose the change
+   into chunks that can be executed by multiple independent weak agents running
+   in parallel (touching independent files / sections), and lay that plan out.
+3. **Identify reusable code.** Call out the parts of the existing code that can
+   be reused directly, or repackaged / extracted into reusable functions, to
+   support what needs to be built — prefer that over duplicating logic.
+4. **Prefer well-known, reliable libraries.** If a requirement is already solved
+   by a mature, trustworthy library, bias toward using it instead of
+   re-implementing it here — unless the requirements genuinely demand a custom
+   approach.
+5. **Share the plan and surface the choices — don't assume.** Present the plan
+   and explicitly raise any decisions to be made, along with their tradeoffs,
+   and ask the user instead of silently picking an option.
+
 ## Repository layout
 
 ```
