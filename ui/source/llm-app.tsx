@@ -11,7 +11,7 @@ import {
   BarChart,
 } from "./components.js";
 import { getCredential, saveCredential } from "./credentials.js";
-import { type CalibrateCmd, findCalibrateBin, stripAnsi } from "./shared.js";
+import { type ArcvalCmd, findArcvalBin, stripAnsi } from "./shared.js";
 import {
   type LlmStep,
   type LlmConfig,
@@ -117,7 +117,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     outputDir: "./out",
     overwrite: false,
     envVars: {},
-    calibrate: { cmd: "calibrate", args: [] },
+    arcval: { cmd: "arcval", args: [] },
     agentUrl: "",
     agentHeaders: {},
     agentBenchmark: false,
@@ -152,7 +152,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   const [runningCount, setRunningCount] = useState(0);
   const [nextModelIdx, setNextModelIdx] = useState(0);
   const processRefs = useRef<Map<string, ChildProcess>>(new Map());
-  const calibrateBin = useRef<CalibrateCmd | null>(null);
+  const arcvalBin = useRef<ArcvalCmd | null>(null);
 
   // ── init error state ──
   const [initError, setInitError] = useState("");
@@ -296,13 +296,13 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
   // ── Init ──
   useEffect(() => {
     if (step !== "init") return;
-    calibrateBin.current = findCalibrateBin();
-    if (!calibrateBin.current) {
-      setInitError("Error: calibrate binary not found");
+    arcvalBin.current = findArcvalBin();
+    if (!arcvalBin.current) {
+      setInitError("Error: arcval binary not found");
       setStep("leaderboard");
       return;
     }
-    setConfig((c) => ({ ...c, calibrate: calibrateBin.current! }));
+    setConfig((c) => ({ ...c, arcval: arcvalBin.current! }));
     setStep("config-path");
   }, [step]);
 
@@ -363,7 +363,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     setNextModelIdx(0);
 
     // Clear the shared output-dir `logs` file once at the start of the run.
-    // Each per-model subprocess we spawn appends (CALIBRATE_LLM_LOG_APPEND=1)
+    // Each per-model subprocess we spawn appends (ARCVAL_LLM_LOG_APPEND=1)
     // so all model runs end up combined in a single top-level log instead of
     // racing to truncate each other.
     try {
@@ -377,9 +377,9 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
 
   // ── Start a single model evaluation ──
   const startModel = (model: string) => {
-    if (!config.calibrate) return;
+    if (!config.arcval) return;
 
-    const bin = config.calibrate;
+    const bin = config.arcval;
     const env: Record<string, string> = { ...process.env } as Record<
       string,
       string
@@ -395,7 +395,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     // Tell benchmark.py to append to the shared <output_dir>/logs file instead
     // of truncating it, so concurrent per-model subprocesses don't overwrite
     // each other's output. The UI clears this file once before the run begins.
-    env.CALIBRATE_LLM_LOG_APPEND = "1";
+    env.ARCVAL_LLM_LOG_APPEND = "1";
 
     const cmdArgs = config.agentUrl
       ? [
@@ -529,12 +529,12 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
 
       const lbDir = path.join(config.outputDir, "leaderboard");
 
-      // Generate leaderboard using python -m calibrate.llm.tests_leaderboard
+      // Generate leaderboard using python -m arcval.llm.tests_leaderboard
       const proc = spawn(
         "python",
         [
           "-m",
-          "calibrate.llm.tests_leaderboard",
+          "arcval.llm.tests_leaderboard",
           "-o",
           config.outputDir,
           "-s",
@@ -574,7 +574,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
     setVerifyStatus("running");
     setVerifyError("");
 
-    const bin = config.calibrate;
+    const bin = config.arcval;
     const verifyArgs = [
       ...bin.args,
       "llm",
@@ -1510,7 +1510,7 @@ export function LlmTestsApp({ onBack }: { onBack?: () => void }) {
               <Box marginBottom={1}>
                 <Text>
                   No results were produced for this model. The
-                  {" "}<Text color="cyan">calibrate llm</Text>{" "}
+                  {" "}<Text color="cyan">arcval llm</Text>{" "}
                   subprocess exited with an error.
                 </Text>
               </Box>

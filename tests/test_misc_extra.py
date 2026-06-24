@@ -13,7 +13,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 class TestLoadAudioImportError(unittest.TestCase):
     def test_missing_pydub(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         # Force ImportError by patching the import statement
         import builtins
@@ -33,7 +33,7 @@ class TestLoadAudioImportError(unittest.TestCase):
 
 class TestTranscribeCartesia(unittest.IsolatedAsyncioTestCase):
     async def test_cartesia_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         # Build a fake websocket
         async def receive_gen():
@@ -73,7 +73,7 @@ class TestTranscribeCartesia(unittest.IsolatedAsyncioTestCase):
 
 class TestStatusSarvamCheck(unittest.IsolatedAsyncioTestCase):
     async def test_sarvam_check(self):
-        from calibrate.status import _check_sarvam
+        from arcval.status import _check_sarvam
         from sarvamai import AudioOutput
 
         audio_msg = MagicMock()
@@ -103,7 +103,7 @@ class TestStatusSarvamCheck(unittest.IsolatedAsyncioTestCase):
 
 class TestStatusSmallestCheck(unittest.IsolatedAsyncioTestCase):
     async def test_smallest_check(self):
-        from calibrate.status import _check_smallest
+        from arcval.status import _check_smallest
 
         fake_tts = MagicMock()
         fake_tts.synthesize = MagicMock(return_value=iter([b"audio"]))
@@ -114,7 +114,7 @@ class TestStatusSmallestCheck(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "tts")
 
     async def test_smallest_check_no_audio(self):
-        from calibrate.status import _check_smallest
+        from arcval.status import _check_smallest
 
         fake_tts = MagicMock()
         fake_tts.synthesize = MagicMock(return_value=iter([]))
@@ -129,7 +129,7 @@ class TestStatusSmallestCheck(unittest.IsolatedAsyncioTestCase):
 
 class TestSTTRunEvalOnly(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_path(self):
-        from calibrate.stt.eval import run_eval_only
+        from arcval.stt.eval import run_eval_only
 
         with tempfile.TemporaryDirectory() as tmp:
             result = await run_eval_only("/nonexistent/path.json", tmp)

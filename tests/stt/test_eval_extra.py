@@ -38,7 +38,7 @@ def _fake_intent_entity(intent=1, entity=1.0):
 
 class TestLoadAudio(unittest.TestCase):
     def test_load_audio_bytes(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_segment = MagicMock()
         fake_segment.set_channels.return_value = fake_segment
@@ -57,7 +57,7 @@ class TestLoadAudio(unittest.TestCase):
         self.assertEqual(result, b"WAVDATA")
 
     def test_load_audio_raw_pcm(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_segment = MagicMock()
         fake_segment.set_channels.return_value = fake_segment
@@ -72,7 +72,7 @@ class TestLoadAudio(unittest.TestCase):
         self.assertEqual(result, b"PCMDATA")
 
     def test_load_audio_as_file(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_segment = MagicMock()
         fake_segment.set_channels.return_value = fake_segment
@@ -95,63 +95,63 @@ class TestLoadAudio(unittest.TestCase):
 
 class TestProviderAPIKeyMissing(unittest.IsolatedAsyncioTestCase):
     async def test_deepgram_missing_key(self):
-        from calibrate.stt.eval import transcribe_deepgram
+        from arcval.stt.eval import transcribe_deepgram
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_deepgram(Path("/tmp/x.wav"), "english")
 
     async def test_openai_missing_key(self):
-        from calibrate.stt.eval import transcribe_openai
+        from arcval.stt.eval import transcribe_openai
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_openai(Path("/tmp/x.wav"), "english")
 
     async def test_groq_missing_key(self):
-        from calibrate.stt.eval import transcribe_groq
+        from arcval.stt.eval import transcribe_groq
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_groq(Path("/tmp/x.wav"), "english")
 
     async def test_google_missing_credentials(self):
-        from calibrate.stt.eval import transcribe_google
+        from arcval.stt.eval import transcribe_google
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_google(Path("/tmp/x.wav"), "english")
 
     async def test_sarvam_missing_key(self):
-        from calibrate.stt.eval import transcribe_sarvam
+        from arcval.stt.eval import transcribe_sarvam
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_sarvam(Path("/tmp/x.wav"), "english")
 
     async def test_elevenlabs_missing_key(self):
-        from calibrate.stt.eval import transcribe_elevenlabs
+        from arcval.stt.eval import transcribe_elevenlabs
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_elevenlabs(Path("/tmp/x.wav"), "english")
 
     async def test_cartesia_missing_key(self):
-        from calibrate.stt.eval import transcribe_cartesia
+        from arcval.stt.eval import transcribe_cartesia
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_cartesia(Path("/tmp/x.wav"), "english")
 
     async def test_smallest_missing_key(self):
-        from calibrate.stt.eval import transcribe_smallest
+        from arcval.stt.eval import transcribe_smallest
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 await transcribe_smallest(Path("/tmp/x.wav"), "english")
 
     async def test_smallest_streaming_missing_key(self):
-        from calibrate.stt.eval import transcribe_smallest_streaming
+        from arcval.stt.eval import transcribe_smallest_streaming
 
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
@@ -162,7 +162,7 @@ class TestProviderAPIKeyMissing(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_provider_raises(self):
-        from calibrate.stt.eval import transcribe_audio
+        from arcval.stt.eval import transcribe_audio
 
         # Use __wrapped__ to skip backoff retries
         inner = transcribe_audio
@@ -172,7 +172,7 @@ class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
             await inner(Path("/tmp/x.wav"), "ref", "bogus", "english", "u")
 
     async def test_routes_to_provider(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_fn = AsyncMock(return_value={"transcript": "hello world"})
         inner = E.transcribe_audio
@@ -184,7 +184,7 @@ class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
         fake_fn.assert_called_once()
 
     async def test_with_langfuse(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_fn = AsyncMock(return_value={"transcript": "x"})
         inner = E.transcribe_audio
@@ -203,13 +203,13 @@ class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
 
 class TestValidateExistingResultsCsv(unittest.TestCase):
     def test_nonexistent_returns_ok(self):
-        from calibrate.stt.eval import validate_existing_results_csv
+        from arcval.stt.eval import validate_existing_results_csv
 
         ok, _ = validate_existing_results_csv("/nonexistent/path.csv")
         self.assertTrue(ok)
 
     def test_empty_is_valid(self):
-        from calibrate.stt.eval import validate_existing_results_csv
+        from arcval.stt.eval import validate_existing_results_csv
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "results.csv"
@@ -218,7 +218,7 @@ class TestValidateExistingResultsCsv(unittest.TestCase):
             self.assertTrue(ok)
 
     def test_invalid_columns(self):
-        from calibrate.stt.eval import validate_existing_results_csv
+        from arcval.stt.eval import validate_existing_results_csv
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "results.csv"
@@ -228,7 +228,7 @@ class TestValidateExistingResultsCsv(unittest.TestCase):
             self.assertIn("Missing columns", err)
 
     def test_valid_columns(self):
-        from calibrate.stt.eval import validate_existing_results_csv
+        from arcval.stt.eval import validate_existing_results_csv
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "results.csv"
@@ -241,13 +241,13 @@ class TestValidateExistingResultsCsv(unittest.TestCase):
 
 class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
     def test_nonexistent(self):
-        from calibrate.stt.eval import validate_stt_eval_only_dataset
+        from arcval.stt.eval import validate_stt_eval_only_dataset
 
         ok, err, _ = validate_stt_eval_only_dataset("/nonexistent.json")
         self.assertFalse(ok)
 
     def test_invalid_json(self):
-        from calibrate.stt.eval import validate_stt_eval_only_dataset
+        from arcval.stt.eval import validate_stt_eval_only_dataset
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "data.json"
@@ -256,7 +256,7 @@ class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
             self.assertFalse(ok)
 
     def test_not_a_list(self):
-        from calibrate.stt.eval import validate_stt_eval_only_dataset
+        from arcval.stt.eval import validate_stt_eval_only_dataset
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "data.json"
@@ -265,7 +265,7 @@ class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
             self.assertFalse(ok)
 
     def test_row_not_object(self):
-        from calibrate.stt.eval import validate_stt_eval_only_dataset
+        from arcval.stt.eval import validate_stt_eval_only_dataset
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "data.json"
@@ -274,7 +274,7 @@ class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
             self.assertFalse(ok)
 
     def test_missing_fields(self):
-        from calibrate.stt.eval import validate_stt_eval_only_dataset
+        from arcval.stt.eval import validate_stt_eval_only_dataset
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "data.json"
@@ -283,7 +283,7 @@ class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
             self.assertFalse(ok)
 
     def test_valid(self):
-        from calibrate.stt.eval import validate_stt_eval_only_dataset
+        from arcval.stt.eval import validate_stt_eval_only_dataset
 
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "data.json"
@@ -297,7 +297,7 @@ class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
 
 class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
     async def test_writes_files(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(E, "get_wer_score", return_value={"score": 0.1, "per_row": [0.1, 0.1]}), \
@@ -328,7 +328,7 @@ class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(list(df["cer"]), [0.2, 0.2])
 
     async def test_rating_evaluator(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         rating_ev = {"name": "r", "system_prompt": "x", "judge_model": "m",
                      "type": "rating", "scale_min": 1, "scale_max": 5}
@@ -355,14 +355,14 @@ class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
 
 class TestRunEvalOnly(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_dataset(self):
-        from calibrate.stt.eval import run_eval_only
+        from arcval.stt.eval import run_eval_only
 
         with tempfile.TemporaryDirectory() as tmp:
             result = await run_eval_only("/nonexistent.json", tmp)
         self.assertEqual(result["status"], "error")
 
     async def test_success(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             ds = Path(tmp) / "data.json"
@@ -389,7 +389,7 @@ class TestRunEvalOnly(unittest.IsolatedAsyncioTestCase):
 
 class TestRunStteval(unittest.IsolatedAsyncioTestCase):
     async def test_processes_new_and_skips_existing(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "stuff"
@@ -422,7 +422,7 @@ class TestRunStteval(unittest.IsolatedAsyncioTestCase):
 
 class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
     async def test_overwrite_path(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -458,7 +458,7 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["status"], "completed")
 
     async def test_existing_invalid_csv_error(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -485,7 +485,7 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["status"], "error")
 
     async def test_debug_mode_and_ignore_retry(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -524,7 +524,7 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
 
 class TestSTTMain(unittest.IsolatedAsyncioTestCase):
     async def test_main_invalid_provider(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             argv = ["e.py", "-p", "bogus", "-i", tmp, "-o", tmp]
@@ -533,7 +533,7 @@ class TestSTTMain(unittest.IsolatedAsyncioTestCase):
                     await E.main()
 
     async def test_main_invalid_input_dir(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         argv = ["e.py", "-p", "deepgram", "-i", "/nonexistent", "-o", "/tmp/x"]
         with patch.object(sys, "argv", argv):
@@ -541,7 +541,7 @@ class TestSTTMain(unittest.IsolatedAsyncioTestCase):
                 await E.main()
 
     async def test_main_success(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -558,7 +558,7 @@ class TestSTTMain(unittest.IsolatedAsyncioTestCase):
                 await E.main()
 
     async def test_main_error_status(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

@@ -1,5 +1,5 @@
 """
-Tests for calibrate/stt/metrics.py — multi-evaluator judge aggregation.
+Tests for arcval/stt/metrics.py — multi-evaluator judge aggregation.
 
 Run with:
     python -m unittest tests.stt.test_metrics -v
@@ -25,7 +25,7 @@ class TestEditMetrics(unittest.TestCase):
         return metric
 
     def test_get_wer_score_loads_wer_and_normalizes(self):
-        from calibrate.stt import metrics as M
+        from arcval.stt import metrics as M
 
         seen = []
         with patch.object(M, "load", return_value=self._fake_load(seen)) as mock_load:
@@ -39,7 +39,7 @@ class TestEditMetrics(unittest.TestCase):
         self.assertEqual(seen[0], ("hello world", "hello world"))
 
     def test_get_cer_score_loads_cer(self):
-        from calibrate.stt import metrics as M
+        from arcval.stt import metrics as M
 
         seen = []
         with patch.object(M, "load", return_value=self._fake_load(seen)) as mock_load:
@@ -50,7 +50,7 @@ class TestEditMetrics(unittest.TestCase):
         self.assertEqual(result["score"], 0.0)
 
     def test_non_string_prediction_becomes_empty(self):
-        from calibrate.stt import metrics as M
+        from arcval.stt import metrics as M
 
         seen = []
         with patch.object(M, "load", return_value=self._fake_load(seen)):
@@ -62,7 +62,7 @@ class TestEditMetrics(unittest.TestCase):
 
 class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
     async def test_default_evaluator_single_judge(self):
-        from calibrate.stt import metrics as stt_metrics
+        from arcval.stt import metrics as stt_metrics
 
         # Patch stt_llm_judge directly (it has @backoff + @observe decorators
         # so patching text_judge inside it is unreliable).
@@ -92,7 +92,7 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(matches), [False, True])
 
     async def test_multi_evaluators_per_row_and_aggregate(self):
-        from calibrate.stt import metrics as stt_metrics
+        from arcval.stt import metrics as stt_metrics
 
         custom_evaluators = [
             {
@@ -136,7 +136,7 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(result["score"], 0.75)
 
     async def test_rating_evaluator_aggregates_mean_score(self):
-        from calibrate.stt import metrics as stt_metrics
+        from arcval.stt import metrics as stt_metrics
 
         rating_evaluator = {
             "name": "semantic_accuracy",
@@ -170,7 +170,7 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["scores"]["semantic_accuracy"]["scale_max"], 5)
 
     async def test_custom_evaluators_passed_through(self):
-        from calibrate.stt import metrics as stt_metrics
+        from arcval.stt import metrics as stt_metrics
 
         custom_evaluators = [
             {"name": "x", "system_prompt": "y", "judge_model": "openai/gpt-4.1"}

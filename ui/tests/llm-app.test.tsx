@@ -43,7 +43,7 @@ vi.mock("node:child_process", () => {
 });
 
 vi.mock("../source/shared.js", () => ({
-  findCalibrateBin: vi.fn(() => ({ cmd: "calibrate", args: [] })),
+  findArcvalBin: vi.fn(() => ({ cmd: "arcval", args: [] })),
   stripAnsi: (s: string) => s,
 }));
 

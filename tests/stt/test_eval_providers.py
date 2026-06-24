@@ -21,7 +21,7 @@ def _mock_load_audio(*args, **kwargs):
 
 class TestTranscribeDeepgram(unittest.IsolatedAsyncioTestCase):
     async def test_deepgram_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_resp = MagicMock()
         fake_resp.results.channels[0].alternatives[0].transcript = "hello"
@@ -39,7 +39,7 @@ class TestTranscribeDeepgram(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeOpenAI(unittest.IsolatedAsyncioTestCase):
     async def test_openai_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_resp = MagicMock()
         fake_resp.text = "hi"
@@ -55,7 +55,7 @@ class TestTranscribeOpenAI(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeGroq(unittest.IsolatedAsyncioTestCase):
     async def test_groq_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_client = MagicMock()
         fake_client.audio.transcriptions.create = AsyncMock(return_value="hello world ")
@@ -69,7 +69,7 @@ class TestTranscribeGroq(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeElevenlabs(unittest.IsolatedAsyncioTestCase):
     async def test_elevenlabs_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         fake_resp = MagicMock()
         fake_resp.text = "hello"
@@ -86,7 +86,7 @@ class TestTranscribeElevenlabs(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeSarvam(unittest.IsolatedAsyncioTestCase):
     async def test_sarvam_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         # Build a fake message stream
         msg = MagicMock()
@@ -116,7 +116,7 @@ class TestTranscribeSarvam(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["transcript"], "hello")
 
     async def test_sarvam_error_message(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         err_msg = MagicMock()
         err_msg.type = "error"
@@ -146,7 +146,7 @@ class TestTranscribeSarvam(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeSmallest(unittest.IsolatedAsyncioTestCase):
     async def test_smallest_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         # Mock httpx response
         fake_resp = MagicMock()
@@ -169,21 +169,21 @@ class TestTranscribeSmallest(unittest.IsolatedAsyncioTestCase):
 
 class TestTranscribeGoogle(unittest.IsolatedAsyncioTestCase):
     async def test_google_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": "/creds.json",
                                       "GOOGLE_CLOUD_PROJECT_ID": "proj"}), \
-             patch("calibrate.stt.eval._transcribe_google_streaming",
+             patch("arcval.stt.eval._transcribe_google_streaming",
                    return_value="hello world"):
             result = await E.transcribe_google(Path("/tmp/x.wav"), "english")
         self.assertEqual(result["transcript"], "hello world")
 
     async def test_google_sindhi(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         with patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": "/creds.json",
                                       "GOOGLE_CLOUD_PROJECT_ID": "proj"}), \
-             patch("calibrate.stt.eval._transcribe_google_streaming",
+             patch("arcval.stt.eval._transcribe_google_streaming",
                    return_value="hello"):
             result = await E.transcribe_google(Path("/tmp/x.wav"), "sindhi")
         self.assertEqual(result["transcript"], "hello")

@@ -18,7 +18,7 @@ import pandas as pd
 
 class TestLLMBenchmarkRun(unittest.IsolatedAsyncioTestCase):
     async def test_run_basic(self):
-        from calibrate.llm import benchmark as B
+        from arcval.llm import benchmark as B
 
         fake_results = {"model": "m1", "provider": "openrouter",
                         "metrics": {"passed": 1, "total": 1}, "results": []}
@@ -36,7 +36,7 @@ class TestLLMBenchmarkRun(unittest.IsolatedAsyncioTestCase):
         self.assertIn("m2", result["models"])
 
     async def test_run_leaderboard_error_recorded(self):
-        from calibrate.llm import benchmark as B
+        from arcval.llm import benchmark as B
 
         fake_results = {"model": "m1", "provider": "openrouter",
                         "metrics": {"passed": 1, "total": 1}, "results": []}
@@ -54,7 +54,7 @@ class TestLLMBenchmarkRun(unittest.IsolatedAsyncioTestCase):
 
 class TestLLMBenchmarkMain(unittest.IsolatedAsyncioTestCase):
     async def test_main_basic(self):
-        from calibrate.llm import benchmark as B
+        from arcval.llm import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
@@ -71,7 +71,7 @@ class TestLLMBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                 await B.main()
 
     async def test_main_error_path_exits(self):
-        from calibrate.llm import benchmark as B
+        from arcval.llm import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
@@ -89,7 +89,7 @@ class TestLLMBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_append_mode(self):
-        from calibrate.llm import benchmark as B
+        from arcval.llm import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
@@ -105,7 +105,7 @@ class TestLLMBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                             "leaderboard_dir": str(out_dir),
                             "models": {"m1": {"metrics": {"passed": 1, "total": 1}}}}
             with patch.object(sys, "argv", argv), \
-                 patch.dict(os.environ, {"CALIBRATE_LLM_LOG_APPEND": "1"}), \
+                 patch.dict(os.environ, {"ARCVAL_LLM_LOG_APPEND": "1"}), \
                  patch.object(B, "run", AsyncMock(return_value=fake_results)):
                 await B.main()
 
@@ -116,7 +116,7 @@ class TestLLMBenchmarkMain(unittest.IsolatedAsyncioTestCase):
 
 class TestSTTBenchmarkRun(unittest.IsolatedAsyncioTestCase):
     async def test_run_basic(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         fake_result = {"provider": "deepgram", "status": "completed",
                        "metrics": {"wer": 0.1,
@@ -139,7 +139,7 @@ class TestSTTBenchmarkRun(unittest.IsolatedAsyncioTestCase):
         self.assertIn("deepgram", result["providers"])
 
     async def test_run_leaderboard_error(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         fake_result = {"provider": "deepgram", "status": "completed",
                        "metrics": {"wer": 0.1}}
@@ -162,7 +162,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
         pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(tmp / "stt.csv", index=False)
 
     async def test_main_invalid_provider(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -173,7 +173,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_invalid_input(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         argv = ["b.py", "-p", "deepgram", "-i", "/nonexistent/missing",
                 "-o", "/tmp/x"]
@@ -182,7 +182,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                 await B.main()
 
     async def test_main_eval_only_missing_dataset(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             argv = ["b.py", "--eval-only", "-o", tmp]
@@ -191,7 +191,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_eval_only_success(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -208,7 +208,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                 await B.main()
 
     async def test_main_eval_only_error(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -224,7 +224,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_no_provider_no_eval_only(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             argv = ["b.py", "-o", tmp]
@@ -233,7 +233,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_no_input_dir(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             argv = ["b.py", "-p", "deepgram", "-o", tmp]
@@ -242,7 +242,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_success_path(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -265,7 +265,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                 await B.main()
 
     async def test_main_error_provider_exits(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -287,7 +287,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_with_config(self):
-        from calibrate.stt import benchmark as B
+        from arcval.stt import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -317,7 +317,7 @@ class TestSTTBenchmarkMain(unittest.IsolatedAsyncioTestCase):
 
 class TestTTSBenchmarkRun(unittest.IsolatedAsyncioTestCase):
     async def test_run_basic(self):
-        from calibrate.tts import benchmark as B
+        from arcval.tts import benchmark as B
 
         fake_result = {"provider": "openai", "status": "completed",
                        "metrics": {"ttfb": {"p50": 0.5, "p95": 0.6, "p99": 0.6, "count": 2},
@@ -333,7 +333,7 @@ class TestTTSBenchmarkRun(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "completed")
 
     async def test_run_leaderboard_error(self):
-        from calibrate.tts import benchmark as B
+        from arcval.tts import benchmark as B
 
         fake_result = {"status": "completed"}
         with tempfile.TemporaryDirectory() as tmp, \
@@ -349,7 +349,7 @@ class TestTTSBenchmarkRun(unittest.IsolatedAsyncioTestCase):
 
 class TestTTSBenchmarkMain(unittest.IsolatedAsyncioTestCase):
     async def test_main_invalid_provider(self):
-        from calibrate.tts import benchmark as B
+        from arcval.tts import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             inp = Path(tmp) / "in.csv"
@@ -360,7 +360,7 @@ class TestTTSBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                     await B.main()
 
     async def test_main_invalid_input(self):
-        from calibrate.tts import benchmark as B
+        from arcval.tts import benchmark as B
 
         argv = ["b.py", "-p", "openai", "-i", "/nonexistent.csv", "-o", "/tmp/x"]
         with patch.object(sys, "argv", argv):
@@ -368,7 +368,7 @@ class TestTTSBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                 await B.main()
 
     async def test_main_success(self):
-        from calibrate.tts import benchmark as B
+        from arcval.tts import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             inp = Path(tmp) / "in.csv"
@@ -393,7 +393,7 @@ class TestTTSBenchmarkMain(unittest.IsolatedAsyncioTestCase):
                 await B.main()
 
     async def test_main_with_config_and_error(self):
-        from calibrate.tts import benchmark as B
+        from arcval.tts import benchmark as B
 
         with tempfile.TemporaryDirectory() as tmp:
             inp = Path(tmp) / "in.csv"

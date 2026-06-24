@@ -1,4 +1,4 @@
-"""Tests for simple helpers in calibrate/agent/run_simulation.py."""
+"""Tests for simple helpers in arcval/agent/run_simulation.py."""
 
 import asyncio
 import socket
@@ -8,14 +8,14 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 class TestIsBenignGoogleSttIdleError(unittest.TestCase):
     def test_benign_match(self):
-        from calibrate.agent.run_simulation import _is_benign_google_stt_idle_error
+        from arcval.agent.run_simulation import _is_benign_google_stt_idle_error
 
         self.assertTrue(_is_benign_google_stt_idle_error(
             "GoogleSTTService error: 409 Stream timed out after receiving no more client requests"
         ))
 
     def test_not_benign(self):
-        from calibrate.agent.run_simulation import _is_benign_google_stt_idle_error
+        from arcval.agent.run_simulation import _is_benign_google_stt_idle_error
 
         self.assertFalse(_is_benign_google_stt_idle_error("Some other error"))
         self.assertFalse(_is_benign_google_stt_idle_error(
@@ -25,12 +25,12 @@ class TestIsBenignGoogleSttIdleError(unittest.TestCase):
 
 class TestCountAgentMessageTurns(unittest.TestCase):
     def test_empty_messages(self):
-        from calibrate.agent.run_simulation import count_agent_message_turns
+        from arcval.agent.run_simulation import count_agent_message_turns
 
         self.assertEqual(count_agent_message_turns([]), 0)
 
     def test_single_user_run(self):
-        from calibrate.agent.run_simulation import count_agent_message_turns
+        from arcval.agent.run_simulation import count_agent_message_turns
 
         messages = [
             {"role": "user", "content": "a"},
@@ -39,7 +39,7 @@ class TestCountAgentMessageTurns(unittest.TestCase):
         self.assertEqual(count_agent_message_turns(messages), 1)
 
     def test_alternating_turns(self):
-        from calibrate.agent.run_simulation import count_agent_message_turns
+        from arcval.agent.run_simulation import count_agent_message_turns
 
         messages = [
             {"role": "user", "content": "a"},
@@ -51,7 +51,7 @@ class TestCountAgentMessageTurns(unittest.TestCase):
         self.assertEqual(count_agent_message_turns(messages), 3)
 
     def test_skip_non_dict(self):
-        from calibrate.agent.run_simulation import count_agent_message_turns
+        from arcval.agent.run_simulation import count_agent_message_turns
 
         messages = [
             "not a dict",
@@ -60,7 +60,7 @@ class TestCountAgentMessageTurns(unittest.TestCase):
         self.assertEqual(count_agent_message_turns(messages), 1)
 
     def test_role_none_treated_as_separator(self):
-        from calibrate.agent.run_simulation import count_agent_message_turns
+        from arcval.agent.run_simulation import count_agent_message_turns
 
         messages = [
             {"role": "user", "content": "a"},
@@ -73,13 +73,13 @@ class TestCountAgentMessageTurns(unittest.TestCase):
 
 class TestFindAvailablePort(unittest.TestCase):
     def test_returns_port(self):
-        from calibrate.agent.run_simulation import find_available_port
+        from arcval.agent.run_simulation import find_available_port
 
         port = find_available_port()
         self.assertGreater(port, 0)
 
     def test_os_error_raises(self):
-        from calibrate.agent import run_simulation as RS
+        from arcval.agent import run_simulation as RS
 
         with patch("socket.socket", side_effect=OSError("no port")):
             with self.assertRaises(RuntimeError):
@@ -89,7 +89,7 @@ class TestFindAvailablePort(unittest.TestCase):
 class TestMetricsLogger(unittest.IsolatedAsyncioTestCase):
     async def test_process_frame(self):
         from collections import defaultdict
-        from calibrate.agent.run_simulation import MetricsLogger
+        from arcval.agent.run_simulation import MetricsLogger
         from pipecat.frames.frames import InputTransportMessageFrame
         from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -119,7 +119,7 @@ class TestMetricsLogger(unittest.IsolatedAsyncioTestCase):
 
     async def test_process_frame_no_context_messages(self):
         from collections import defaultdict
-        from calibrate.agent.run_simulation import MetricsLogger
+        from arcval.agent.run_simulation import MetricsLogger
         from pipecat.frames.frames import InputTransportMessageFrame
         from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -137,7 +137,7 @@ class TestMetricsLogger(unittest.IsolatedAsyncioTestCase):
 
 class TestIOLogger(unittest.IsolatedAsyncioTestCase):
     async def test_process_tts_text_frame(self):
-        from calibrate.agent.run_simulation import IOLogger
+        from arcval.agent.run_simulation import IOLogger
         from pipecat.frames.frames import TTSTextFrame
         from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -152,7 +152,7 @@ class TestIOLogger(unittest.IsolatedAsyncioTestCase):
 
 class TestSimulatedUserTurnIndexHook(unittest.IsolatedAsyncioTestCase):
     async def test_marks_pending(self):
-        from calibrate.agent.run_simulation import SimulatedUserTurnIndexHook
+        from arcval.agent.run_simulation import SimulatedUserTurnIndexHook
         from pipecat.frames.frames import LLMFullResponseStartFrame
         from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -169,7 +169,7 @@ class TestSimulatedUserTurnIndexHook(unittest.IsolatedAsyncioTestCase):
 
 class TestSTTLogger(unittest.IsolatedAsyncioTestCase):
     async def test_process_frame_user_transcription(self):
-        from calibrate.agent.run_simulation import STTLogger
+        from arcval.agent.run_simulation import STTLogger
         from pipecat.frames.frames import InputTransportMessageFrame
         from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -191,7 +191,7 @@ class TestSTTLogger(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outputs[-1], "hello")
 
     async def test_process_frame_continues_turn(self):
-        from calibrate.agent.run_simulation import STTLogger
+        from arcval.agent.run_simulation import STTLogger
         from pipecat.frames.frames import InputTransportMessageFrame
         from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -215,7 +215,7 @@ class TestSTTLogger(unittest.IsolatedAsyncioTestCase):
 
 class TestSilencePadder(unittest.IsolatedAsyncioTestCase):
     async def test_init(self):
-        from calibrate.agent.run_simulation import SilencePadder
+        from arcval.agent.run_simulation import SilencePadder
 
         padder = SilencePadder(silence_duration_ms=200, chunk_ms=20)
         self.assertEqual(padder._silence_duration_ms, 200)

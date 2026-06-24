@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 class TestGoogleStreaming(unittest.TestCase):
     def test_google_streaming_happy(self):
-        from calibrate.stt import eval as E
+        from arcval.stt import eval as E
 
         # Mock the response chunks
         result = MagicMock()

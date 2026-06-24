@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 
-const STORE_DIR = path.join(os.homedir(), '.calibrate');
+const STORE_DIR = path.join(os.homedir(), '.arcval');
 
 function ensureDir() {
   fs.mkdirSync(STORE_DIR, { recursive: true, mode: 0o700 });
@@ -202,7 +202,7 @@ export function removeMetric(id: string) {
 
 // ─── Config builders ─────────────────────────────────────────
 
-/** Build a tool definition compatible with calibrate config JSON */
+/** Build a tool definition compatible with arcval config JSON */
 export function toolToConfig(t: StoredTool): Record<string, any> {
   const base: Record<string, any> = {
     type: t.type === 'webhook' ? 'webhook' : 'structured_output',

@@ -1,5 +1,5 @@
 """
-Tests for calibrate/stt/leaderboard.py.
+Tests for arcval/stt/leaderboard.py.
 
 Covers:
 - Dynamic metric discovery from metrics.json (no hardcoded metric list)
@@ -19,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 import openpyxl  # noqa: F401 — ensures xlsx reading works
 
-from calibrate.stt.leaderboard import generate_leaderboard as generate_stt_leaderboard
+from arcval.stt.leaderboard import generate_leaderboard as generate_stt_leaderboard
 
 
 def _write_provider(
