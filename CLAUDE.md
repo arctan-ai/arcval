@@ -4,14 +4,14 @@ Guidance for Claude Code when working in this repository.
 
 ## What this project is
 
-**Calibrate** (`calibrate-agent` on PyPI) is an open-source evaluation framework
+**Arcval** (`arcval-agent` on PyPI) is an open-source evaluation framework
 for voice agents. It benchmarks LLMs, STT providers, TTS providers, and runs
 agent simulations — all from a single CLI / Python library.
 
-- Website / docs: https://calibrate.artpark.ai
+- Website / docs: https://arcval.artpark.ai
 - Built on top of [pipecat](https://github.com/pipecat-ai/pipecat).
-- The CLI entry point is `calibrate` (defined in `pyproject.toml:scripts` →
-  `calibrate.cli:main`).
+- The CLI entry point is `arcval` (defined in `pyproject.toml:scripts` →
+  `arcval.cli:main`).
 
 The repo also ships an **Ink (React) terminal UI** in `ui/` that is bundled into
 the Python package and launched from the CLI.
@@ -41,7 +41,7 @@ follow this process before writing code:
 ## Repository layout
 
 ```
-calibrate/                 # Python package (the importable library + CLI)
+arcval/                 # Python package (the importable library + CLI)
 ├── cli.py                 # Top-level CLI entry — wires subcommands to UI/SDK
 ├── connections.py         # TextAgentConnection — HTTP client for external agents
 ├── judges.py              # text_judge / audio_judge / simulation_judge — LLM-as-judge core
@@ -73,7 +73,7 @@ calibrate/                 # Python package (the importable library + CLI)
 └── integrations/
     └── smallest/          # Smallest.ai STT/TTS provider integration
 
-tests/                     # Test suite — mirrors the calibrate/ structure
+tests/                     # Test suite — mirrors the arcval/ structure
 ├── stt/        test_eval.py, test_metrics.py, test_leaderboard.py
 ├── tts/        test_eval.py, test_metrics.py, test_leaderboard.py
 ├── llm/        test_benchmark.py, test_run_tests.py, test_run_simulation.py,
@@ -85,7 +85,7 @@ tests/                     # Test suite — mirrors the calibrate/ structure
 ui/                        # Ink (React + TypeScript) terminal UI
 ├── source/                # *.tsx entry points (app, llm-app, sim-app, etc.)
 ├── tests/                 # vitest tests
-└── package.json           # Bundled into calibrate/ui/cli.bundle.mjs
+└── package.json           # Bundled into arcval/ui/cli.bundle.mjs
 
 docs/                      # Mintlify docs site (.mdx)
 examples/                  # Example datasets + scripts users can run
@@ -109,7 +109,7 @@ this shape:
 }
 ```
 
-Helpers in `calibrate/judges.py`:
+Helpers in `arcval/judges.py`:
 - `is_rating(evaluator)` — True if `type == "rating"`
 - `evaluator_result_value(ev, row)` — pulls the score/match value out of a per-row result
 - `DEFAULT_STT_EVALUATOR`, `DEFAULT_TTS_EVALUATOR`, `DEFAULT_LLM_TEST_EVALUATOR`
@@ -178,7 +178,7 @@ uv run pytest tests/                 # full suite (slow — avoid unless needed)
 
 **Run only the tests relevant to your change, not the whole suite.** The full
 suite is slow; scope your run to the mirrored test file(s) for the modules you
-touched (e.g. a change to `calibrate/llm/run_tests.py` →
+touched (e.g. a change to `arcval/llm/run_tests.py` →
 `uv run pytest tests/llm/test_run_tests.py tests/llm/test_run_tests_extra.py`).
 CI runs the whole suite on the PR — let it be the backstop for the full run
 rather than running everything locally on every change.
@@ -220,10 +220,10 @@ For any function block you add or modify:
    that motivated the change (empty inputs, missing keys, error branches,
    boundary values, concurrent / resume paths if applicable). Put them in the
    mirrored test file under `tests/` (e.g. a change to
-   `calibrate/stt/eval.py` goes in `tests/stt/test_eval.py`).
+   `arcval/stt/eval.py` goes in `tests/stt/test_eval.py`).
 2. **Run only the scoped tests for what you changed** — the mirrored test
    file(s) for the modules you touched (e.g. a change to
-   `calibrate/llm/run_tests.py` → run `tests/llm/test_run_tests.py` and
+   `arcval/llm/run_tests.py` → run `tests/llm/test_run_tests.py` and
    `tests/llm/test_run_tests_extra.py`), not the whole `tests/` suite, which is
    slow. Confirm they pass. Don't rely on the type checker or "it looks right"
    — the test must actually exercise the new path. CI runs the full suite on
@@ -244,7 +244,7 @@ pre-commit hook on `main`.
 - **Prefer editing existing files** over creating new ones — especially in
   `stt/`, `tts/`, and `llm/`, where the structure is mirrored 1-to-1 in
   `tests/`.
-- The `out/` folder appears inside several module dirs (e.g. `calibrate/stt/out`).
+- The `out/` folder appears inside several module dirs (e.g. `arcval/stt/out`).
   These are gitignored runtime artifacts from local runs — don't commit them.
 - `pipecat-ai` is pinned to `0.0.98` because the API surface changes between
   versions; bump deliberately and re-test the agent simulation paths.

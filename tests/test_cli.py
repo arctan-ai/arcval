@@ -1,5 +1,5 @@
 """
-Integration tests for `calibrate llm` CLI against a fake HTTP agent server.
+Integration tests for `arcval llm` CLI against a fake HTTP agent server.
 
 Requires: pytest-httpserver
     pip install pytest-httpserver
@@ -51,7 +51,7 @@ TEST_CASES_TOOL_CALL = [
     }
 ]
 
-# The default verify message sent by calibrate (from calibrate/connections.py)
+# The default verify message sent by arcval (from arcval/connections.py)
 VERIFY_MESSAGE_CONTENT = "Hello, are you there?"
 
 
@@ -60,7 +60,7 @@ VERIFY_MESSAGE_CONTENT = "Hello, are you there?"
 # ---------------------------------------------------------------------------
 
 def run_cli(*args, extra_env=None):
-    """Run `calibrate llm ...` as a subprocess and return CompletedProcess."""
+    """Run `arcval llm ...` as a subprocess and return CompletedProcess."""
     env = {
         **os.environ,
         "OPENAI_API_KEY": "sk-fake",
@@ -69,7 +69,7 @@ def run_cli(*args, extra_env=None):
     if extra_env:
         env.update(extra_env)
     return subprocess.run(
-        [sys.executable, "-m", "calibrate.cli", *args],
+        [sys.executable, "-m", "arcval.cli", *args],
         capture_output=True,
         text=True,
         env=env,

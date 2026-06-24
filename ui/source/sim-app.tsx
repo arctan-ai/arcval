@@ -11,7 +11,7 @@ import {
   BarChart,
 } from "./components.js";
 import { getCredential, saveCredential } from "./credentials.js";
-import { type CalibrateCmd, findCalibrateBin, stripAnsi } from "./shared.js";
+import { type ArcvalCmd, findArcvalBin, stripAnsi } from "./shared.js";
 
 // ─── CSV parser ──────────────────────────────────────────────
 // Minimal RFC-4180 row parser: respects double-quoted fields, treats ``""``
@@ -100,7 +100,7 @@ interface SimConfig {
   parallel: number;
   overwrite: boolean;
   envVars: Record<string, string>;
-  calibrate: CalibrateCmd;
+  arcval: ArcvalCmd;
 }
 
 interface ModelState {
@@ -199,7 +199,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
     parallel: 1,
     overwrite: false,
     envVars: {},
-    calibrate: { cmd: "calibrate", args: [] },
+    arcval: { cmd: "arcval", args: [] },
   });
 
   // ── overwrite confirmation state ──
@@ -227,7 +227,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
   const [runningCount, setRunningCount] = useState(0);
   const [nextModelIdx, setNextModelIdx] = useState(0);
   const processRefs = useRef<Map<string, ChildProcess>>(new Map());
-  const calibrateBin = useRef<CalibrateCmd | null>(null);
+  const arcvalBin = useRef<ArcvalCmd | null>(null);
 
   // ── simulation slot state (for text simulations) ──
   const [simSlots, setSimSlots] = useState<SimSlotState[]>([]);
@@ -363,13 +363,13 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
   // ── Init ──
   useEffect(() => {
     if (step !== "init") return;
-    calibrateBin.current = findCalibrateBin();
-    if (!calibrateBin.current) {
-      setInitError("Error: calibrate binary not found");
+    arcvalBin.current = findArcvalBin();
+    if (!arcvalBin.current) {
+      setInitError("Error: arcval binary not found");
       setStep("leaderboard");
       return;
     }
-    setConfig((c) => ({ ...c, calibrate: calibrateBin.current! }));
+    setConfig((c) => ({ ...c, arcval: arcvalBin.current! }));
     setStep("select-type");
   }, [step]);
 
@@ -545,11 +545,11 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
 
   // ── Run text simulation (single process with directory polling) ──
   useEffect(() => {
-    if (step !== "running" || config.type !== "text" || !config.calibrate)
+    if (step !== "running" || config.type !== "text" || !config.arcval)
       return;
     if (!simProcessRunning) return;
 
-    const bin = config.calibrate;
+    const bin = config.arcval;
     const env: Record<string, string> = { ...process.env } as Record<
       string,
       string
@@ -637,10 +637,10 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
 
   // ── Run voice simulation (single process with directory polling) ──
   useEffect(() => {
-    if (step !== "running" || config.type !== "voice" || !config.calibrate)
+    if (step !== "running" || config.type !== "voice" || !config.arcval)
       return;
 
-    const bin = config.calibrate;
+    const bin = config.arcval;
     const env: Record<string, string> = { ...process.env } as Record<
       string,
       string
@@ -1012,7 +1012,7 @@ export function SimulationsApp({ onBack }: { onBack?: () => void }) {
                   if (hasAgentUrl && config.type === "voice") {
                     setConfigInput("");
                     setInitError(
-                      "Agent connection is not supported for voice simulations. Use a calibrate agent config instead (https://calibrate.artpark.ai/docs/cli/simulations#set-up-your-agent) with the system prompts, tools, etc. defined in the config itself.",
+                      "Agent connection is not supported for voice simulations. Use a arcval agent config instead (https://arcval.artpark.ai/docs/cli/simulations#set-up-your-agent) with the system prompts, tools, etc. defined in the config itself.",
                     );
                     return;
                   }

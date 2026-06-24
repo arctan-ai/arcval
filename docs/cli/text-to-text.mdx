@@ -15,14 +15,14 @@ description: "Create edge cases to test the LLM powering your agent"
 
 There are two ways to run LLM evaluations:
 
-- **Calibrate agent** — define your agent inside the config file and evaluate across models.
+- **Arcval agent** — define your agent inside the config file and evaluate across models.
 - **Agent connection** — connect your existing agent via HTTP and run tests against it directly.
 
-### Calibrate agent
+### Arcval agent
 
-Define your agent's system prompt and tools directly in the config file. Calibrate runs the evaluation using an LLM of your choice.
+Define your agent's system prompt and tools directly in the config file. Arcval runs the evaluation using an LLM of your choice.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json) for a full template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-internal-agent.json) for a full template.
 
 #### `system_prompt`
 
@@ -43,15 +43,15 @@ A list of tools available to your agent. See the guide on [Configuring Tools](/g
 
 ### Agent connection
 
-If you already have an agent running, you can connect calibrate directly to it instead of redefining your agent's system prompt and tools.
+If you already have an agent running, you can connect arcval directly to it instead of redefining your agent's system prompt and tools.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json) for a full template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-external-agent.json) for a full template.
 
 #### Connect your agent
 
 | Key             | Required | Description                                                 |
 | --------------- | -------- | ----------------------------------------------------------- |
-| `agent_url`     | Yes      | The URL calibrate will make a POST request to               |
+| `agent_url`     | Yes      | The URL arcval will make a POST request to               |
 | `agent_headers` | No       | HTTP headers included in every request — typically for auth |
 
 ```json
@@ -65,7 +65,7 @@ Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/
 
 #### Request format
 
-Calibrate will make a POST request to your `agent_url` with the following body:
+Arcval will make a POST request to your `agent_url` with the following body:
 
 ```json
 {
@@ -110,7 +110,7 @@ Each item in `tool_calls` must have:
 Before running evaluations, you can verify that your agent endpoint is reachable and returns the expected format:
 
 ```bash
-calibrate llm --verify --agent-url https://your-agent.com/chat --agent-headers '{"Authorization": "Bearer YOUR_API_KEY"}'
+arcval llm --verify --agent-url https://your-agent.com/chat --agent-headers '{"Authorization": "Bearer YOUR_API_KEY"}'
 ```
 
 This sends a test message and checks that the response matches the required format, printing a clear error if something is wrong.
@@ -271,7 +271,7 @@ Like a [response test](#response-test), the agent is run on the `history` to pro
 }
 ```
 
-See [`examples/llm/config-conversation.json`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-conversation.json) for a full template.
+See [`examples/llm/config-conversation.json`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-conversation.json) for a full template.
 
 ---
 
@@ -337,7 +337,7 @@ The simplest setup needs no top-level `evaluators`. Pass `criteria` as a string 
 
 <AccordionGroup>
   <Accordion title="correctness (default evaluator system prompt)">
-    When you omit top-level `evaluators` and pass a string `criteria`, this is the implicit evaluator from [`DEFAULT_LLM_TEST_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/calibrate/judges.py) that is used by default. Your `criteria` string is substituted for `{{criteria}}`.
+    When you omit top-level `evaluators` and pass a string `criteria`, this is the implicit evaluator from [`DEFAULT_LLM_TEST_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/arcval/judges.py) that is used by default. Your `criteria` string is substituted for `{{criteria}}`.
 
     ```text
     You are a highly accurate evaluator evaluating the response of an agent to a user's message.
@@ -407,8 +407,8 @@ If you want thresholds different from “top-of-scale” (for example “tone at
 ## Full examples
 
 <AccordionGroup>
-  <Accordion title="Calibrate agent example">
-    Same structure as [`examples/llm/config-internal-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
+  <Accordion title="Arcval agent example">
+    Same structure as [`examples/llm/config-internal-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-internal-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
 
     ```jsonc
     {
@@ -582,7 +582,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
   </Accordion>
 
   <Accordion title="Agent connection example">
-    Same structure as [`examples/llm/config-external-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
+    Same structure as [`examples/llm/config-external-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-external-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
 
     ```jsonc
     {
@@ -691,13 +691,13 @@ If you want thresholds different from “top-of-scale” (for example “tone at
 
 ### Interactive mode
 
-Run `calibrate llm` with no arguments to launch the interactive UI:
+Run `arcval llm` with no arguments to launch the interactive UI:
 
 ```bash
-calibrate llm
+arcval llm
 ```
 
-**Calibrate agent** — the UI detects that your config defines a system prompt and tools and guides you through:
+**Arcval agent** — the UI detects that your config defines a system prompt and tools and guides you through:
 
 1. **Config file** — path to your config file
 2. **Provider** — OpenRouter or OpenAI
@@ -714,7 +714,7 @@ _Single test:_
 
 1. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
 2. **Mode** — select "Single test"
-3. **Verify** — calibrate verifies the connection; shows success or failure with the option to go back
+3. **Verify** — arcval verifies the connection; shows success or failure with the option to go back
 4. **Output directory** — where results will be saved (defaults to `./out`)
 5. **API keys** — only `OPENAI_API_KEY` is required (used by the LLM judge)
 
@@ -722,25 +722,25 @@ _Benchmark across models:_
 
 1. **Config file** — path to your config file (with `agent_url` and optionally `agent_headers`)
 2. **Mode** — select "Benchmark across models"
-3. **Model entry** — enter a model name; calibrate verifies the connection with that model before asking if you want to add another
+3. **Model entry** — enter a model name; arcval verifies the connection with that model before asking if you want to add another
 4. **Confirm models** — review the list and add more or proceed
 5. **Output directory** — where results will be saved (defaults to `./out`)
 6. **API keys** — only `OPENAI_API_KEY` is required (used by the LLM judge)
 
 ### Non-interactive mode
 
-**Calibrate agent:**
+**Arcval agent:**
 
 Single model:
 
 ```bash
-calibrate llm -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
+arcval llm -c config.json -m openai/gpt-4.1 -p openrouter -o ./out
 ```
 
 Multiple models (benchmark — runs in parallel, generates a leaderboard):
 
 ```bash
-calibrate llm -c config.json -m openai/gpt-4.1 claude-sonnet-4-5 -p openrouter -o ./out
+arcval llm -c config.json -m openai/gpt-4.1 claude-sonnet-4-5 -p openrouter -o ./out
 ```
 
 **Agent connection:**
@@ -759,15 +759,15 @@ Your config must include `agent_url` and optionally `agent_headers`:
 Single run (use the default model of the agent):
 
 ```bash
-calibrate llm -c config.json -o ./out
+arcval llm -c config.json -o ./out
 ```
 
-Calibrate verifies the connection before running. Results are saved directly to the output directory.
+Arcval verifies the connection before running. Results are saved directly to the output directory.
 
-Benchmark across models — calibrate verifies the connection for each model, then runs the test suite once per model. The model name is included in each request so your agent can route to the right model:
+Benchmark across models — arcval verifies the connection for each model, then runs the test suite once per model. The model name is included in each request so your agent can route to the right model:
 
 ```bash
-calibrate llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out
+arcval llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out
 ```
 
 Each model gets its own results folder, and a summary with pass rates for all models is printed at the end.
@@ -777,11 +777,11 @@ Each model gets its own results folder, and a summary with pass rates for all mo
 Pass `--skip-verify` to skip the agent connection verification step. This is useful in CI/automation pipelines where you've already confirmed the agent is reachable:
 
 ```bash
-calibrate llm -c config.json -o ./out --skip-verify
+arcval llm -c config.json -o ./out --skip-verify
 ```
 
 ```bash
-calibrate llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out --skip-verify
+arcval llm -c config.json -m gemma-4-26b-a4b-it gpt-4o -o ./out --skip-verify
 ```
 
 ## Output

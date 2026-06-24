@@ -60,8 +60,8 @@ def _rating_ev(name: str, lo: int = 1, hi: int = 5) -> dict:
 class TestRunTestExternalMultiCriteria(unittest.IsolatedAsyncioTestCase):
 
     async def _run(self, agent_response, evaluators, judge_result, criteria=None):
-        from calibrate.connections import TextAgentConnection
-        from calibrate.llm.run_tests import run_test_external
+        from arcval.connections import TextAgentConnection
+        from arcval.llm.run_tests import run_test_external
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
         fake_body = {"response": agent_response, "tool_calls": []}
@@ -74,7 +74,7 @@ class TestRunTestExternalMultiCriteria(unittest.IsolatedAsyncioTestCase):
         mock_judge = AsyncMock(return_value=judge_result)
         ctx, _ = _patch_httpx(fake_body)
         with ctx, patch(
-            "calibrate.llm.run_tests.test_response_llm_judge", mock_judge
+            "arcval.llm.run_tests.test_response_llm_judge", mock_judge
         ):
             return await run_test_external(
                 chat_history=[{"role": "user", "content": "Hi"}],
@@ -84,7 +84,7 @@ class TestRunTestExternalMultiCriteria(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_no_latency_without_agent_reported_metrics(self):
-        # Calibrate no longer times external agents itself (a round-trip timer
+        # Arcval no longer times external agents itself (a round-trip timer
         # would fold in network/proxy overhead, not true inference time). With no
         # agent-reported metrics, the result simply has no latency. The
         # agent-reported latency path is covered in tests/test_connections.py.
@@ -197,18 +197,18 @@ class TestRunTestExternalMultiCriteria(unittest.IsolatedAsyncioTestCase):
 
 class TestAggregateCriteria(unittest.TestCase):
     def _registry(self, *evaluators) -> dict:
-        from calibrate.judges import DEFAULT_LLM_TEST_EVALUATOR
+        from arcval.judges import DEFAULT_LLM_TEST_EVALUATOR
         reg = {DEFAULT_LLM_TEST_EVALUATOR["name"]: DEFAULT_LLM_TEST_EVALUATOR}
         for ev in evaluators:
             reg[ev["name"]] = ev
         return reg
 
     def test_empty_list_returns_empty_dict(self):
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         self.assertEqual(_aggregate_criteria([], self._registry()), {})
 
     def test_tool_call_tests_excluded(self):
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         results = [
             {
                 "metrics": {"passed": True},
@@ -223,7 +223,7 @@ class TestAggregateCriteria(unittest.TestCase):
 
     def test_string_criteria_aggregates_under_default_evaluator(self):
         """String criteria are normalized to the implicit ``correctness`` evaluator."""
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         results = [
             {
                 "metrics": {
@@ -253,7 +253,7 @@ class TestAggregateCriteria(unittest.TestCase):
         self.assertEqual(agg["correctness"]["pass_rate"], 50.0)
 
     def test_multi_evaluators_counted_independently(self):
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         accuracy = _binary_ev("accuracy")
         tone = _binary_ev("tone")
         results = [
@@ -288,7 +288,7 @@ class TestAggregateCriteria(unittest.TestCase):
         )
 
     def test_rating_evaluator_aggregates_mean(self):
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         fluency = _rating_ev("fluency")
         results = [
             {
@@ -337,7 +337,7 @@ class TestAggregateCriteria(unittest.TestCase):
         )
 
     def test_mixed_binary_and_rating_evaluators(self):
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         accuracy = _binary_ev("accuracy")
         fluency = _rating_ev("fluency")
         results = [
@@ -370,7 +370,7 @@ class TestAggregateCriteria(unittest.TestCase):
         self.assertEqual(agg["fluency"]["scale_max"], 5)
 
     def test_mixed_string_and_multi_evaluator_criteria(self):
-        from calibrate.llm.run_tests import _aggregate_criteria
+        from arcval.llm.run_tests import _aggregate_criteria
         accuracy = _binary_ev("accuracy")
         tone = _binary_ev("tone")
         results = [
@@ -430,8 +430,8 @@ class TestEvaluatorsRegistryLegacyDefaultAlias(unittest.TestCase):
     """
 
     def test_default_alias_resolves_to_implicit_default(self):
-        from calibrate.llm.run_tests import _get_name_to_evaluator_dict
-        from calibrate.judges import DEFAULT_LLM_TEST_EVALUATOR
+        from arcval.llm.run_tests import _get_name_to_evaluator_dict
+        from arcval.judges import DEFAULT_LLM_TEST_EVALUATOR
 
         registry = _get_name_to_evaluator_dict({})
         self.assertIn("default", registry)
@@ -440,7 +440,7 @@ class TestEvaluatorsRegistryLegacyDefaultAlias(unittest.TestCase):
         self.assertIn(DEFAULT_LLM_TEST_EVALUATOR["name"], registry)
 
     def test_user_evaluator_named_default_overrides_alias(self):
-        from calibrate.llm.run_tests import _get_name_to_evaluator_dict
+        from arcval.llm.run_tests import _get_name_to_evaluator_dict
 
         custom = {
             "name": "default",
@@ -454,11 +454,11 @@ class TestEvaluatorsRegistryLegacyDefaultAlias(unittest.TestCase):
     def test_default_alias_can_be_referenced_in_test_case(self):
         """A test case's ``criteria`` referencing ``{"name": "default"}`` must
         still render successfully and produce the implicit default evaluator."""
-        from calibrate.llm.run_tests import (
+        from arcval.llm.run_tests import (
             _get_name_to_evaluator_dict,
             _resolve_evaluators_for_test_case,
         )
-        from calibrate.judges import DEFAULT_LLM_TEST_EVALUATOR
+        from arcval.judges import DEFAULT_LLM_TEST_EVALUATOR
 
         evaluation = {
             "type": "response",

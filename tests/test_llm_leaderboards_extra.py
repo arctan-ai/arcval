@@ -17,20 +17,20 @@ def _write(base: Path, name: str, metrics):
 
 class TestSimulationLeaderboard(unittest.TestCase):
     def test_missing_base_dir_raises(self):
-        from calibrate.llm.simulation_leaderboard import generate_leaderboard
+        from arcval.llm.simulation_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
                 generate_leaderboard(str(Path(tmp) / "missing"), str(Path(tmp) / "save"))
 
     def test_no_model_dirs(self):
-        from calibrate.llm.simulation_leaderboard import generate_leaderboard
+        from arcval.llm.simulation_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             generate_leaderboard(tmp, str(Path(tmp) / "lb"))
 
     def test_missing_metrics_json_skipped(self):
-        from calibrate.llm.simulation_leaderboard import generate_leaderboard
+        from arcval.llm.simulation_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -38,7 +38,7 @@ class TestSimulationLeaderboard(unittest.TestCase):
             generate_leaderboard(tmp, str(base / "lb"))
 
     def test_invalid_json_skipped(self):
-        from calibrate.llm.simulation_leaderboard import generate_leaderboard
+        from arcval.llm.simulation_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -46,7 +46,7 @@ class TestSimulationLeaderboard(unittest.TestCase):
             generate_leaderboard(tmp, str(base / "lb"))
 
     def test_binary_rating_legacy_metrics(self):
-        from calibrate.llm.simulation_leaderboard import generate_leaderboard
+        from arcval.llm.simulation_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -61,7 +61,7 @@ class TestSimulationLeaderboard(unittest.TestCase):
             self.assertTrue(csv.exists())
 
     def test_main_cli(self):
-        from calibrate.llm import simulation_leaderboard
+        from arcval.llm import simulation_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -73,20 +73,20 @@ class TestSimulationLeaderboard(unittest.TestCase):
 
 class TestTestsLeaderboard(unittest.TestCase):
     def test_missing_base_dir_raises(self):
-        from calibrate.llm.tests_leaderboard import generate_leaderboard
+        from arcval.llm.tests_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
                 generate_leaderboard(str(Path(tmp) / "missing"), str(Path(tmp) / "save"))
 
     def test_no_model_dirs(self):
-        from calibrate.llm.tests_leaderboard import generate_leaderboard
+        from arcval.llm.tests_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             generate_leaderboard(tmp, str(Path(tmp) / "lb"))
 
     def test_missing_and_invalid(self):
-        from calibrate.llm.tests_leaderboard import generate_leaderboard
+        from arcval.llm.tests_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -95,7 +95,7 @@ class TestTestsLeaderboard(unittest.TestCase):
             generate_leaderboard(tmp, str(base / "lb"))
 
     def test_full_leaderboard(self):
-        from calibrate.llm.tests_leaderboard import generate_leaderboard
+        from arcval.llm.tests_leaderboard import generate_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -114,7 +114,7 @@ class TestTestsLeaderboard(unittest.TestCase):
             self.assertTrue((base / "lb" / "llm_leaderboard.csv").exists())
 
     def test_main_cli(self):
-        from calibrate.llm import tests_leaderboard
+        from arcval.llm import tests_leaderboard
 
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

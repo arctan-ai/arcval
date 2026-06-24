@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Calibrate",
+  "name": "Arcval",
   "colors": {
     "primary": "#16A34A",
     "light": "#07C983",
@@ -88,7 +88,7 @@
       "anchors": [
         {
           "anchor": "GitHub",
-          "href": "https://github.com/artpark-sahai-org/calibrate",
+          "href": "https://github.com/artpark-sahai-org/arcval",
           "icon": "github"
         },
 
@@ -112,13 +112,13 @@
       },
       {
         "label": "GitHub",
-        "href": "https://github.com/artpark-sahai-org/calibrate"
+        "href": "https://github.com/artpark-sahai-org/arcval"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Get Started",
-      "href": "https://calibrate.artpark.ai"
+      "href": "https://arcval.artpark.ai"
     }
   },
   "contextual": {
@@ -135,7 +135,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/artpark-sahai-org/calibrate"
+      "github": "https://github.com/artpark-sahai-org/arcval"
     }
   }
 }

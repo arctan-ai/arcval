@@ -1,6 +1,6 @@
-# Calibrate Documentation
+# Arcval Documentation
 
-This is the documentation for Calibrate, an open-source simulation and testing framework for voice agents.
+This is the documentation for Arcval, an open-source simulation and testing framework for voice agents.
 
 ## Development
 

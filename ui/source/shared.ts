@@ -3,18 +3,18 @@ import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export interface CalibrateCmd {
+export interface ArcvalCmd {
   cmd: string;
   args: string[];
 }
 
-export function findCalibrateBin(): CalibrateCmd | null {
+export function findArcvalBin(): ArcvalCmd | null {
   try {
-    execSync('which calibrate', { stdio: 'pipe' });
-    return { cmd: 'calibrate', args: [] };
+    execSync('which arcval', { stdio: 'pipe' });
+    return { cmd: 'arcval', args: [] };
   } catch {}
 
-  for (const rel of ['../.venv/bin/calibrate', '.venv/bin/calibrate']) {
+  for (const rel of ['../.venv/bin/arcval', '.venv/bin/arcval']) {
     const abs = path.resolve(rel);
     if (fs.existsSync(abs)) {
       return { cmd: abs, args: [] };
@@ -22,8 +22,8 @@ export function findCalibrateBin(): CalibrateCmd | null {
   }
 
   try {
-    execSync('uv run which calibrate', { stdio: 'pipe', cwd: path.resolve('..') });
-    return { cmd: 'uv', args: ['run', 'calibrate'] };
+    execSync('uv run which arcval', { stdio: 'pipe', cwd: path.resolve('..') });
+    return { cmd: 'uv', args: ['run', 'arcval'] };
   } catch {}
 
   return null;

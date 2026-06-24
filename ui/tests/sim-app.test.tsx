@@ -18,7 +18,7 @@ import { EventEmitter } from "node:events";
 // Track spawn calls so tests can inspect args
 const spawnMock = vi.fn();
 
-// Default fs mock: calibrate agent config (no agent_url)
+// Default fs mock: arcval agent config (no agent_url)
 vi.mock("node:fs", () => {
   const existsSyncMock = vi.fn(() => true);
   const readFileSyncMock = vi.fn((_path: string) =>
@@ -44,7 +44,7 @@ vi.mock("node:child_process", () => {
 });
 
 vi.mock("../source/shared.js", () => ({
-  findCalibrateBin: vi.fn(() => ({ cmd: "calibrate", args: [] })),
+  findArcvalBin: vi.fn(() => ({ cmd: "arcval", args: [] })),
   stripAnsi: (s: string) => s,
 }));
 
@@ -145,7 +145,7 @@ describe("SimulationsApp", () => {
     return { stdout, stdin };
   }
 
-  // ─── Helper: advance to provider step (text calibrate agent) ──────────────
+  // ─── Helper: advance to provider step (text arcval agent) ──────────────
   async function reachProvider() {
     const fs = await import("node:fs");
     vi.mocked(fs.readFileSync).mockReturnValue(
@@ -163,14 +163,14 @@ describe("SimulationsApp", () => {
     return { stdout, stdin };
   }
 
-  // ─── Helper: advance to output-dir step (text calibrate agent) ────────────
-  async function reachOutputDirTextCalibrate() {
+  // ─── Helper: advance to output-dir step (text arcval agent) ────────────
+  async function reachOutputDirTextArcval() {
     const { stdout, stdin } = await reachEnterModel();
     await pressEnter(stdin); // submit empty → uses default model → output-dir
     return { stdout, stdin };
   }
 
-  // ─── Helper: advance to output-dir step (voice calibrate agent) ───────────
+  // ─── Helper: advance to output-dir step (voice arcval agent) ───────────
   async function reachOutputDirVoice() {
     const fs = await import("node:fs");
     vi.mocked(fs.readFileSync).mockReturnValue(
@@ -192,9 +192,9 @@ describe("SimulationsApp", () => {
     return { stdout, stdin };
   }
 
-  // ─── Helper: advance to parallel step (text calibrate agent) ──────────────
+  // ─── Helper: advance to parallel step (text arcval agent) ──────────────
   async function reachParallel() {
-    const { stdout, stdin } = await reachOutputDirTextCalibrate();
+    const { stdout, stdin } = await reachOutputDirTextArcval();
     await pressEnter(stdin); // submit output-dir → parallel
     return { stdout, stdin };
   }
@@ -210,8 +210,8 @@ describe("SimulationsApp", () => {
     return { stdout, stdin };
   }
 
-  // ─── Helper: get to running step for text calibrate agent ─────────────────
-  async function reachRunningTextCalibrate(modelName = "gpt-4.1") {
+  // ─── Helper: get to running step for text arcval agent ─────────────────
+  async function reachRunningTextArcval(modelName = "gpt-4.1") {
     const fs = await import("node:fs");
     vi.mocked(fs.readFileSync).mockReturnValue(
       JSON.stringify({ system_prompt: "You are helpful", tools: [] }),
@@ -235,8 +235,8 @@ describe("SimulationsApp", () => {
     return { stdout, stdin, proc };
   }
 
-  // ─── Helper: get to running step for voice calibrate agent ────────────────
-  async function reachRunningVoiceCalibrate() {
+  // ─── Helper: get to running step for voice arcval agent ────────────────
+  async function reachRunningVoiceArcval() {
     const fs = await import("node:fs");
     vi.mocked(fs.readFileSync).mockReturnValue(
       JSON.stringify({ system_prompt: "You are helpful", tools: [] }),
@@ -305,7 +305,7 @@ describe("SimulationsApp", () => {
       expect(frame).toContain("Config file");
     });
 
-    it("shows provider step for text calibrate agent config", async () => {
+    it("shows provider step for text arcval agent config", async () => {
       const { stdout } = await reachProvider();
       const frame = stdout.lastFrame() ?? "";
       expect(frame).toContain("Provider");
@@ -318,7 +318,7 @@ describe("SimulationsApp", () => {
     });
 
     it("shows output-dir step", async () => {
-      const { stdout } = await reachOutputDirTextCalibrate();
+      const { stdout } = await reachOutputDirTextArcval();
       const frame = stdout.lastFrame() ?? "";
       expect(frame).toContain("Output directory");
     });
@@ -356,7 +356,7 @@ describe("SimulationsApp", () => {
       expect(frame).not.toContain("Provider");
     });
 
-    it("text + calibrate agent config goes to provider", async () => {
+    it("text + arcval agent config goes to provider", async () => {
       const fs = await import("node:fs");
       vi.mocked(fs.readFileSync).mockReturnValue(
         JSON.stringify({ system_prompt: "You are helpful", tools: [] }),
@@ -448,8 +448,8 @@ describe("SimulationsApp", () => {
       expect(frame).toContain("Provider");
     });
 
-    it("output-dir esc (text calibrate agent) goes to enter-model", async () => {
-      const { stdout, stdin } = await reachOutputDirTextCalibrate();
+    it("output-dir esc (text arcval agent) goes to enter-model", async () => {
+      const { stdout, stdin } = await reachOutputDirTextArcval();
 
       await pressEsc(stdin);
 
@@ -499,8 +499,8 @@ describe("SimulationsApp", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("startSimulation cmdArgs", () => {
-    it("text calibrate agent includes --type text -m model -p provider", async () => {
-      const { proc: _proc } = await reachRunningTextCalibrate("gpt-4.1");
+    it("text arcval agent includes --type text -m model -p provider", async () => {
+      const { proc: _proc } = await reachRunningTextArcval("gpt-4.1");
       await wait(50);
 
       const calls = spawnMock.mock.calls;
@@ -518,8 +518,8 @@ describe("SimulationsApp", () => {
       expect(args).toContain("openrouter");
     });
 
-    it("voice calibrate agent includes --type voice, no -m or -p", async () => {
-      await reachRunningVoiceCalibrate();
+    it("voice arcval agent includes --type voice, no -m or -p", async () => {
+      await reachRunningVoiceArcval();
       await wait(50);
 
       const calls = spawnMock.mock.calls;

@@ -11,7 +11,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 
 def _make_adapter(**overrides):
-    from calibrate.agent.run_simulation import RTVIMessageFrameAdapter
+    from arcval.agent.run_simulation import RTVIMessageFrameAdapter
 
     ctx = MagicMock()
     ctx.get_messages.return_value = []
@@ -134,7 +134,7 @@ class TestSaveTranscript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             adapter = _make_adapter(output_dir=tmp)
             adapter._save_transcript([{"role": "assistant", "content": "hi"}])
-            from calibrate.agent.run_simulation import TRANSCRIPT_FILE_NAME
+            from arcval.agent.run_simulation import TRANSCRIPT_FILE_NAME
             transcript_path = Path(tmp) / TRANSCRIPT_FILE_NAME
             self.assertTrue(transcript_path.exists())
             data = json.loads(transcript_path.read_text())
@@ -187,7 +187,7 @@ class TestFlushPendingBotAudio(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(adapter._pending_bot_audio_frames, [])
 
     async def test_flushes(self):
-        from calibrate.agent import run_simulation as RS
+        from arcval.agent import run_simulation as RS
 
         with tempfile.TemporaryDirectory() as tmp:
             adapter = _make_adapter(audio_save_dir=tmp)

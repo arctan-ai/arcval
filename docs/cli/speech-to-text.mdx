@@ -6,7 +6,7 @@ description: "Evaluate Speech to Text providers via CLI"
 ## Get started
 
 ```bash
-calibrate stt
+arcval stt
 ```
 
 <iframe
@@ -45,7 +45,7 @@ The **stt.csv** file contains the reference transcriptions:
   at `audios/<id>.wav` where `<id>` matches the `id` column in your CSV.
 </Note>
 
-Refer to the [sample dataset](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/stt/sample_input) for a template.
+Refer to the [sample dataset](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/stt/sample_input) for a template.
 
 4. **Output directory** — where results will be saved (defaults to `./out`)
 5. **API keys** — enter the API keys for the selected providers
@@ -57,7 +57,7 @@ The evaluation runs providers in parallel (max 2 at a time), showing the transcr
 By default, a text LLM judge — routed through [OpenRouter](https://openrouter.ai/) (set `OPENROUTER_API_KEY` in your environment) — evaluates whether each transcription matches the reference text semantically using the built-in **`semantic_match`** evaluator; expand **Default evaluator: semantic_match** below for the exact `system_prompt` from the codebase. You can customize the judge model and add multiple evaluators by passing an optional config file with `--config`:
 
 ```bash
-calibrate stt -p deepgram google -i ./data -o ./out --config config.json
+arcval stt -p deepgram google -i ./data -o ./out --config config.json
 ```
 
 Each evaluator's `system_prompt` is sent as the system message to its own dedicated LLM judge call (one call per evaluator, run in parallel). The user message contains the source/transcription pair.
@@ -103,7 +103,7 @@ Binary evaluators produce per-row pass/fail and a mean pass-rate. Rating evaluat
 
 When multiple evaluators are defined, each is scored independently — one LLM call per evaluator per row, all run in parallel — and appears as a separate column in the results and leaderboard.
 
-Refer to the [sample config](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/stt/config.json) for a template.
+Refer to the [sample config](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/stt/config.json) for a template.
 
 <Note>
   The `--config` flag is optional. When omitted, a single built-in
@@ -113,7 +113,7 @@ Refer to the [sample config](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob
 
 <AccordionGroup>
   <Accordion title="semantic_match (default evaluator system prompt)">
-    Matches [`DEFAULT_STT_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/calibrate/judges.py) in `calibrate/judges.py` when no `--config` is passed.
+    Matches [`DEFAULT_STT_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/arcval/judges.py) in `arcval/judges.py` when no `--config` is passed.
 
     ```text
     You are a highly accurate evaluator evaluating the transcription output of an STT model.

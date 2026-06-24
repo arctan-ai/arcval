@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const CRED_DIR = path.join(os.homedir(), '.calibrate');
+const CRED_DIR = path.join(os.homedir(), '.arcval');
 const CRED_FILE = path.join(CRED_DIR, 'credentials.json');
 
 export function loadCredentials(): Record<string, string> {

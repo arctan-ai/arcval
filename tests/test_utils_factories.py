@@ -20,12 +20,12 @@ class TestCreateSTTService(unittest.TestCase):
             patch("pipecat.services.groq.stt.GroqSTTService"),
             patch("pipecat.services.sarvam.stt.SarvamSTTService"),
             patch("pipecat.services.elevenlabs.stt.ElevenLabsRealtimeSTTService"),
-            patch("calibrate.integrations.smallest.stt.SmallestSTTService"),
+            patch("arcval.integrations.smallest.stt.SmallestSTTService"),
         ]
         return patches
 
     def test_deepgram(self):
-        from calibrate.utils import create_stt_service
+        from arcval.utils import create_stt_service
 
         with patch.dict(os.environ, {"DEEPGRAM_API_KEY": "k"}):
             for p in self._patch_imports():
@@ -37,7 +37,7 @@ class TestCreateSTTService(unittest.TestCase):
                     p.stop()
 
     def test_each_provider(self):
-        from calibrate.utils import create_stt_service
+        from arcval.utils import create_stt_service
 
         envs = {
             "DEEPGRAM_API_KEY": "k",
@@ -71,11 +71,11 @@ class TestCreateTTSService(unittest.TestCase):
             patch("pipecat.services.elevenlabs.tts.ElevenLabsTTSService"),
             patch("pipecat.services.sarvam.tts.SarvamTTSService"),
             patch("pipecat.services.deepgram.tts.DeepgramTTSService"),
-            patch("calibrate.integrations.smallest.tts.SmallestTTSService"),
+            patch("arcval.integrations.smallest.tts.SmallestTTSService"),
         ]
 
     def test_each_provider(self):
-        from calibrate.utils import create_tts_service
+        from arcval.utils import create_tts_service
 
         envs = {
             "OPENAI_API_KEY": "k",

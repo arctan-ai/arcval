@@ -1,5 +1,5 @@
 [project]
-name = "calibrate-agent"
+name = "arcval"
 dynamic = ["version"]
 description = "An open-source evaluation framework for voice agents"
 readme = "README.md"
@@ -58,18 +58,15 @@ dev = [
     "pytest-cov>=4.0",
 ]
 
-[project.urls]
-Documentation = "https://calibrate.artpark.ai/docs"
-
 [project.scripts]
-calibrate = "calibrate.cli:main"
+arcval = "arcval.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 exclude = ["ui*", "examples*", "docs*", "images*"]
 
 [tool.setuptools.package-data]
-"calibrate" = [
+"arcval" = [
     "ui/cli.bundle.mjs",
     "stt/sarvam_intent_entity/prompt_template.txt",
 ]

@@ -21,8 +21,8 @@ import {
 } from "./components.js";
 import {
   type AppMode,
-  type CalibrateCmd,
-  findCalibrateBin,
+  type ArcvalCmd,
+  findArcvalBin,
   stripAnsi,
   findAvailablePort,
 } from "./shared.js";
@@ -42,7 +42,7 @@ interface EvalConfig {
   outputDir: string;
   overwrite: boolean;
   envVars: Record<string, string>;
-  calibrate: CalibrateCmd;
+  arcval: ArcvalCmd;
   // Optional path to a JSON config file with an ``evaluators`` list. When
   // unset, the backend falls back to its default evaluator (semantic_match
   // for STT, pronunciation for TTS).
@@ -224,7 +224,7 @@ function ConfigLanguageStep({
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          Calibrate
+          Arcval
         </Text>
         <Text bold> — {getModeLabel(mode)} Evaluation</Text>
       </Box>
@@ -275,7 +275,7 @@ function ProviderSelectStep({
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          Calibrate
+          Arcval
         </Text>
         <Text bold> — {getModeLabel(mode)} Evaluation</Text>
       </Box>
@@ -460,8 +460,8 @@ function ConfigInputStep({
       : "Directory containing audio files and stt.csv. Press enter to confirm.";
   const docsUrl =
     mode === "tts"
-      ? "https://calibrate.artpark.ai/docs/cli/text-to-speech"
-      : "https://calibrate.artpark.ai/docs/cli/speech-to-text";
+      ? "https://arcval.artpark.ai/docs/cli/text-to-speech"
+      : "https://arcval.artpark.ai/docs/cli/speech-to-text";
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -663,8 +663,8 @@ function ConfigFileStep({
 
   const docsUrl =
     mode === "tts"
-      ? "https://calibrate.artpark.ai/docs/cli/text-to-speech"
-      : "https://calibrate.artpark.ai/docs/cli/speech-to-text";
+      ? "https://arcval.artpark.ai/docs/cli/text-to-speech"
+      : "https://arcval.artpark.ai/docs/cli/speech-to-text";
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -875,7 +875,7 @@ function KeySetupStep({
 
       <Box marginTop={1}>
         <Text dimColor>
-          Enter to submit. Keys are stored in ~/.calibrate/credentials.json.
+          Enter to submit. Keys are stored in ~/.arcval/credentials.json.
           Press Esc to go back.
         </Text>
       </Box>
@@ -912,7 +912,7 @@ function RunStep({
   // Build spawn args for a provider eval
   function buildEvalArgs(provider: string, isLastProvider: boolean): string[] {
     const args = [
-      ...config.calibrate.args,
+      ...config.arcval.args,
       config.mode,
       "-p",
       provider,
@@ -955,7 +955,7 @@ function RunStep({
     setRunningCount((c) => c + 1);
 
     const proc = spawn(
-      config.calibrate.cmd,
+      config.arcval.cmd,
       buildEvalArgs(provider, isLastProvider),
       {
         env: {
@@ -2049,7 +2049,7 @@ function MainMenu({ onSelect }: { onSelect: (mode: AppMode) => void }) {
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          Calibrate
+          Arcval
         </Text>
         <Text bold> — Voice Agent Evaluation Toolkit</Text>
       </Box>
@@ -2100,18 +2100,18 @@ function EvalApp({
     outputDir: "./out",
     overwrite: false,
     envVars: {},
-    calibrate: { cmd: "calibrate", args: [] },
+    arcval: { cmd: "arcval", args: [] },
   });
   const [initError, setInitError] = useState("");
 
   useEffect(() => {
-    const result = findCalibrateBin();
+    const result = findArcvalBin();
     if (result) {
-      setConfig((c) => ({ ...c, calibrate: result }));
+      setConfig((c) => ({ ...c, arcval: result }));
       setStep("config-language");
     } else {
       setInitError(
-        "calibrate CLI not found. Install with: pip install -e . (from project root)"
+        "arcval CLI not found. Install with: pip install -e . (from project root)"
       );
     }
   }, []);
@@ -2119,7 +2119,7 @@ function EvalApp({
   if (step === "init" && !initError) {
     return (
       <Box padding={1}>
-        <Spinner label="Checking calibrate CLI..." />
+        <Spinner label="Checking arcval CLI..." />
       </Box>
     );
   }

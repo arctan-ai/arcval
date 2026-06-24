@@ -29,7 +29,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run tests
-        run: uv run pytest tests/ -v --cov=calibrate --cov-report=xml --cov-report=term
+        run: uv run pytest tests/ -v --cov=arcval --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -48,7 +48,7 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           from: ${{ secrets.MAIL_USERNAME }}
           to: aman.dalmia@artpark.in
-          subject: "[calibrate] Release blocked — tests failed for ${{ github.ref_name }}"
+          subject: "[arcval] Release blocked — tests failed for ${{ github.ref_name }}"
           body: |
             PyPI publish blocked because tests failed for this release.
 

@@ -3,7 +3,7 @@ title: "Simulations"
 description: "Run simulated conversations with your agents"
 ---
 
-[Calibrate](https://calibrate.artpark.ai) lets you simulate entire conversations with your agent using simulated users matching the personas of your target audience for specific scenarios defined by you. This guide walks you through setting up and running your first simulation.
+[Arcval](https://arcval.artpark.ai) lets you simulate entire conversations with your agent using simulated users matching the personas of your target audience for specific scenarios defined by you. This guide walks you through setting up and running your first simulation.
 
 ## Create an agent
 
@@ -14,19 +14,19 @@ From the sidebar, click **Agents** → **New agent**. You have two options for s
 </Frame>
 
 <AccordionGroup>
-  <Accordion title="Build your agent in Calibrate" icon="flask" defaultOpen>
-    Configure the LLM/STT/TTS models, set instructions, and define the tools your agent can use — all within Calibrate. 
+  <Accordion title="Build your agent in Arcval" icon="flask" defaultOpen>
+    Configure the LLM/STT/TTS models, set instructions, and define the tools your agent can use — all within Arcval. 
     
     See our [Core Concepts: Agents](/core-concepts/agents) guide for the full setup.
 
   </Accordion>
   <Accordion title="Connect your existing agent" icon="link">
-    If you already have a deployed agent, you can connect it to Calibrate via its HTTP endpoint. Calibrate will call your agent directly to run simulations.
+    If you already have a deployed agent, you can connect it to Arcval via its HTTP endpoint. Arcval will call your agent directly to run simulations.
 
     See our [Core Concepts: Agent Connections](/core-concepts/agent-connections) guide for the full setup.
 
     <Note>
-      Agent connections support **text simulations** only. For **voice simulations** (with STT/TTS latency metrics), use an agent built within Calibrate with STT and TTS providers configured.
+      Agent connections support **text simulations** only. For **voice simulations** (with STT/TTS latency metrics), use an agent built within Arcval with STT and TTS providers configured.
     </Note>
 
   </Accordion>
@@ -144,7 +144,7 @@ The **Overall metrics** show the aggregated values for each metric across all co
 <Note>
   [Agent connections](/core-concepts/agent-connections) support **text
   simulations** only. For **voice simulations** (with STT/TTS latency metrics),
-  use an agent [built within Calibrate](/core-concepts/agents) with STT and TTS
+  use an agent [built within Arcval](/core-concepts/agents) with STT and TTS
   providers configured.
 </Note>
 
@@ -197,7 +197,7 @@ Once a simulation run completes, you can share the results publicly. Open a comp
 
 This toggles the run to **Public** and generates a shareable link.
 
-Anyone with the link can view the overall metrics, per-conversation results, and transcripts without needing a Calibrate account.
+Anyone with the link can view the overall metrics, per-conversation results, and transcripts without needing a Arcval account.
 
 <Frame>
   <img

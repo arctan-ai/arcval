@@ -1,4 +1,4 @@
-import { type CalibrateCmd } from "./shared.js";
+import { type ArcvalCmd } from "./shared.js";
 
 // ─── Step Types ───────────────────────────────────────────────
 export type LlmStep =
@@ -79,7 +79,7 @@ export interface LlmConfig {
   outputDir: string;
   overwrite: boolean;
   envVars: Record<string, string>;
-  calibrate: CalibrateCmd;
+  arcval: ArcvalCmd;
   agentUrl: string;
   agentHeaders: Record<string, string>;
   agentBenchmark: boolean;
