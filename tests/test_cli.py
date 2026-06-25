@@ -135,7 +135,9 @@ class TestSlackLeaderboardUpload:
         monkeypatch.setenv("SLACK_CHANNEL_ID", "C123")
         monkeypatch.setattr("arcval.slack.upload_file", _fake_upload)
 
-        assert cli._upload_slack_leaderboard(str(tmp_path), "done") is True
+        did_upload, error = cli._upload_slack_leaderboard(str(tmp_path), "done")
+        assert did_upload is True
+        assert error is None
         assert uploaded["file_path"].endswith("stt_leaderboard.xlsx")
         assert uploaded["initial_comment"] == "done"
 
@@ -149,7 +151,31 @@ class TestSlackLeaderboardUpload:
         monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
         monkeypatch.delenv("SLACK_CHANNEL_ID", raising=False)
 
-        assert cli._upload_slack_leaderboard(str(tmp_path), "done") is False
+        did_upload, error = cli._upload_slack_leaderboard(str(tmp_path), "done")
+        assert did_upload is False
+        assert error == "missing SLACK_BOT_TOKEN or SLACK_CHANNEL_ID"
+
+    def test_falls_back_to_repo_root_leaderboard_dir(self, tmp_path, monkeypatch):
+        from arcval import cli
+
+        repo_leaderboard = tmp_path / "leaderboard"
+        repo_leaderboard.mkdir()
+        (repo_leaderboard / "stt_leaderboard.xlsx").write_bytes(b"xlsx")
+
+        uploaded = {}
+
+        def _fake_upload(file_path, initial_comment, title=None, token=None, channel=None):
+            uploaded["file_path"] = file_path
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C123")
+        monkeypatch.setattr("arcval.slack.upload_file", _fake_upload)
+
+        did_upload, error = cli._upload_slack_leaderboard(str(tmp_path / "out"), "done")
+        assert did_upload is True
+        assert error is None
+        assert uploaded["file_path"].endswith("stt_leaderboard.xlsx")
 
 
 # ---------------------------------------------------------------------------

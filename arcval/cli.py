@@ -218,30 +218,35 @@ def _find_leaderboard_xlsx(output_dir: str) -> str | None:
     """Return the first leaderboard workbook path, if present."""
     from pathlib import Path
 
-    leaderboard_dir = Path(output_dir) / "leaderboard"
-    if not leaderboard_dir.is_dir():
-        return None
+    candidate_dirs = [
+        Path(output_dir) / "leaderboard",
+        Path.cwd() / "leaderboard",
+    ]
+    for leaderboard_dir in candidate_dirs:
+        if not leaderboard_dir.is_dir():
+            continue
+        files = sorted(
+            path for path in leaderboard_dir.iterdir() if path.suffix.lower() == ".xlsx"
+        )
+        if files:
+            return str(files[0])
+    return None
 
-    files = sorted(
-        path for path in leaderboard_dir.iterdir() if path.suffix.lower() == ".xlsx"
-    )
-    return str(files[0]) if files else None
 
-
-def _upload_slack_leaderboard(output_dir: str, text: str) -> bool:
+def _upload_slack_leaderboard(output_dir: str, text: str) -> tuple[bool, str | None]:
     """Upload the leaderboard workbook to Slack when upload creds are present."""
     xlsx_path = _find_leaderboard_xlsx(output_dir)
     if not xlsx_path:
-        return False
+        return False, "no leaderboard xlsx found"
     if not os.environ.get("SLACK_BOT_TOKEN") or not os.environ.get("SLACK_CHANNEL_ID"):
-        return False
+        return False, "missing SLACK_BOT_TOKEN or SLACK_CHANNEL_ID"
     try:
         from arcval.slack import upload_file
 
         upload_file(xlsx_path, initial_comment=text)
-        return True
-    except Exception:
-        return False
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
 
 
 def _format_leaderboard_table(output_dir: str) -> str | None:
@@ -1158,9 +1163,12 @@ Examples:
                 f"• Output: `{os.path.abspath(args.output_dir)}`\n"
                 f"• Status: {'Success' if e.code == 0 else f'Error (exit {e.code})'}"
             )
-            if e.code == 0 and _upload_slack_leaderboard(args.output_dir, msg):
-                pass
-            else:
+            uploaded, upload_error = (False, None)
+            if e.code == 0:
+                uploaded, upload_error = _upload_slack_leaderboard(args.output_dir, msg)
+            if not uploaded:
+                if e.code == 0 and upload_error:
+                    msg += f"\n• Leaderboard upload: {upload_error}"
                 _send_slack(msg)
         raise
 
@@ -1186,7 +1194,10 @@ Examples:
                 f"• Output: `{os.path.abspath(args.output_dir)}`\n"
                 f"• Status: Success"
             )
-            if not _upload_slack_leaderboard(args.output_dir, msg):
+            uploaded, upload_error = _upload_slack_leaderboard(args.output_dir, msg)
+            if not uploaded:
+                if upload_error:
+                    msg += f"\n• Leaderboard upload: {upload_error}"
                 _send_slack(msg)
 
 
