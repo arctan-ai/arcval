@@ -21,6 +21,10 @@ the Python package and launched from the CLI.
 For **every** change, new feature, or modification — no matter how small —
 follow this process before writing code:
 
+0. **Read the companion instruction files first.** `.cursor/rules/app-details.md`
+   contains the most detailed project reference (architecture, SDK patterns,
+   config formats, Ink UI flows). `.cursor/rules/context-first.md` enforces this.
+
 1. **Review the existing code thoroughly.** Search the codebase for code or
    functionality that already does (or partly does) what's being asked. Don't
    assume something doesn't exist — confirm it.
@@ -46,8 +50,11 @@ arcval/                 # Python package (the importable library + CLI)
 ├── connections.py         # TextAgentConnection — HTTP client for external agents
 ├── judges.py              # text_judge / audio_judge / simulation_judge — LLM-as-judge core
 ├── langfuse.py            # Optional Langfuse tracing wrappers (@observe)
+├── rate_limit.py          # Async sliding-window rate limiters per provider
+├── slack.py               # Slack webhook notification helpers
 ├── status.py              # Run-status reporting helpers
 ├── utils.py               # Provider language code maps, logging, validation
+├── general/               # General (non-conversational) task evaluation
 ├── stt/
 │   ├── eval.py            # Per-provider transcribe_* + transcribe_audio router
 │   ├── metrics.py         # WER + LLM-judge aggregation (get_llm_judge_score)
@@ -89,7 +96,7 @@ ui/                        # Ink (React + TypeScript) terminal UI
 
 docs/                      # Mintlify docs site (.mdx)
 examples/                  # Example datasets + scripts users can run
-.github/workflows/         # tests.yml, publish.yml, Codex.yml, Codex-review.yml
+.github/workflows/         # tests.yml, publish.yml, claude.yml, claude-code-review.yml
 .githooks/pre-commit       # Runs pytest before commits to main
 ```
 
@@ -192,6 +199,12 @@ Tests are pure unit tests — **no real API calls** are ever made:
 
 The suite runs in ~10s locally and contributes coverage to Codecov on CI.
 
+Debugging notes:
+- Failing tests in `tests/llm/test_run_simulation_integration.py` or
+  `tests/test_cli.py` usually mean `pytest-httpserver` isn't installed
+  (it's in the `dev` extra).
+- `simpleaudio` build failures on Linux → missing `libasound2-dev`.
+
 ### Git hooks
 `.githooks/pre-commit` runs `uv run --extra dev pytest tests/` **only when
 HEAD is on `main`**. Other branches commit instantly. Activated per-clone
@@ -204,8 +217,10 @@ with `git config core.hooksPath .githooks` (also in the README).
   emails `aman.dalmia@artpark.in` on failure via `dawidd6/action-send-mail`.
 - **`.github/workflows/publish.yml`** — release-triggered. Has a `test` job
   that `build` `needs:` — if tests fail, the PyPI publish is blocked.
-- Secrets required: `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`,
-  `MAIL_PASSWORD` (SMTP for failure emails) and `CODECOV_TOKEN`.
+- **`.github/workflows/claude.yml`** and **`claude-code-review.yml`** —
+  hosted-agent workflows for interactive / review sessions.
+- Secrets: `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`
+  (SMTP failure emails) and `CODECOV_TOKEN`.
 
 ### Versioning + publish
 Version is `dynamic` via `setuptools_scm` (`fallback_version = "0.0.0-dev"`).
@@ -249,13 +264,3 @@ pre-commit hook on `main`.
 - `pipecat-ai` is pinned to `0.0.98` because the API surface changes between
   versions; bump deliberately and re-test the agent simulation paths.
 
-## Useful pointers when debugging
-
-- Failing tests in `tests/llm/test_run_simulation_integration.py` or
-  `tests/test_cli.py` usually mean `pytest-httpserver` isn't installed
-  (it's in the `dev` extra).
-- `simpleaudio` build failures on Linux → missing `libasound2-dev`.
-- Pandas mangling string ids in `results.csv` resume logic → cast to str
-  explicitly or use non-numeric ids.
-- Backoff retries swallowing a `ValueError` from an unknown provider →
-  call `router.__wrapped__()` to bypass `@backoff` in tests.
