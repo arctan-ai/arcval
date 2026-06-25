@@ -233,6 +233,11 @@ Examples:
         default=None,
         help="Path to dataset JSON (list of {id, gt, pred}). Required with --eval-only.",
     )
+    stt_parser.add_argument(
+        "--skip-llm-judge",
+        action="store_true",
+        help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
 
     # ── TTS ───────────────────────────────────────────────────────
     # `arcval tts` with no args → interactive UI
@@ -516,6 +521,8 @@ Examples:
             argv.extend(["-o", args.output_dir])
             if args.config:
                 argv.extend(["--config", args.config])
+            if args.skip_llm_judge:
+                argv.append("--skip-llm-judge")
 
             sys.argv = argv
             asyncio.run(stt_benchmark_main())
@@ -539,6 +546,8 @@ Examples:
                 argv.extend(["-s", args.save_dir])
             if args.config:
                 argv.extend(["--config", args.config])
+            if args.skip_llm_judge:
+                argv.append("--skip-llm-judge")
 
             sys.argv = argv
             asyncio.run(stt_benchmark_main())

@@ -1,12 +1,12 @@
 # Arcval
 
 [![WhatsApp](https://img.shields.io/badge/WhatsApp-Join%20Community-25D366?logo=whatsapp&logoColor=white)](https://chat.whatsapp.com/JygDNcZ943a3VmZDXYMg5Z)
-[![codecov](https://codecov.io/gh/ARTPARK-SAHAI-ORG/arcval/branch/main/graph/badge.svg)](https://codecov.io/gh/ARTPARK-SAHAI-ORG/arcval)
+[![codecov](https://codecov.io/gh/ARTPARK-SAHAI-ORG/calibrate/branch/main/graph/badge.svg)](https://codecov.io/gh/ARTPARK-SAHAI-ORG/calibrate)
 [![CC BY-SA 4.0][cc-by-sa-shield]][cc-by-sa]
 
-CLI for [Arcval](https://arcval.artpark.ai): an AI evaluation platform for non-profits
+CLI for [Arcval](https://calibrate.artpark.ai): an AI evaluation platform for non-profits
 
-With [Arcval](https://arcval.artpark.ai), you can move from slow, manual testing to a fast, automated, and repeatable testing process for your entire agent stack:
+With [Arcval](https://calibrate.artpark.ai), you can move from slow, manual testing to a fast, automated, and repeatable testing process for your entire agent stack:
 
 - `Text to Text (LLMs)`: Evaluate the response quality and tool calling of your LLMs for multi-turn conversations and find the find LLM for your agent
 - `Human alignment`: Create LLM judges to make your evaluations scalable and reliable with human in the loop.
@@ -32,7 +32,7 @@ arcval llm          # Interactive LLM evaluation
 arcval simulations  # Interactive text or voice simulations
 ```
 
-- [CLI Documentation](https://arcval.artpark.ai/docs/cli/overview)
+- [CLI Documentation](https://calibrate.artpark.ai/docs/cli/overview)
 
 ## Contributing
 

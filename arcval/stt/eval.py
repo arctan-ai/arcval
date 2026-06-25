@@ -869,8 +869,23 @@ async def run_single_provider_eval(
     ignore_retry: bool,
     overwrite: bool,
     judge_evaluators: list[dict] = None,
+    skip_llm_judge: bool = False,
 ) -> dict:
-    """Run STT evaluation for a single provider."""
+    """Run STT evaluation for a single provider.
+
+    Args:
+        provider: STT provider name.
+        language: Language of audio files.
+        input_dir: Directory containing audios/ and stt.csv.
+        input_file_name: Input CSV filename.
+        output_dir: Output directory for results.
+        debug: Run on first N audio files only.
+        debug_count: Number of files in debug mode.
+        ignore_retry: Skip retry loop.
+        overwrite: Overwrite existing results.
+        judge_evaluators: Optional list of evaluator dicts.
+        skip_llm_judge: When True, skip LLM judge and only compute WER/CER.
+    """
     provider_output_dir = join(output_dir, provider)
 
     # ``exist_ok=True`` keeps this safe when the same provider folder is
@@ -997,6 +1012,7 @@ async def run_single_provider_eval(
             evaluator_config_dir=output_dir,
             judge_evaluators=judge_evaluators,
             language=language,
+            skip_llm_judge=skip_llm_judge,
         )
 
         return {
@@ -1052,8 +1068,12 @@ async def _score_and_write_results(
     evaluator_config_dir: str,
     judge_evaluators: list[dict] = None,
     language: str = "english",
+    skip_llm_judge: bool = False,
 ) -> dict:
-    """Run WER + LLM-judge evaluators over (gt, pred) pairs and write outputs.
+    """Run WER/CER + optional LLM-judge evaluators over (gt, pred) pairs.
+
+    When ``skip_llm_judge`` is True, only WER, CER, and intent/entity scores
+    are computed — the LLM-based judge evaluators are skipped entirely.
 
     Writes ``results.csv`` and ``metrics.json`` under ``output_dir`` and the
     resolved evaluator config under ``evaluator_config_dir``. Returns the
@@ -1075,57 +1095,79 @@ async def _score_and_write_results(
         to_terminal=False,
     )
 
-    _evaluators = judge_evaluators if judge_evaluators else [DEFAULT_STT_EVALUATOR]
-    require_unique_evaluator_names(_evaluators)
-    write_evaluator_config(evaluator_config_dir, _evaluators)
-    llm_results = await get_llm_judge_score(
-        gt_transcripts,
-        pred_transcripts,
-        evaluators=_evaluators,
-    )
-    for name, score_dict in llm_results["scores"].items():
-        _log(f"  {name}: {score_dict['mean']:.4f}")
-
-    _evaluators_by_name = {ev["name"]: ev for ev in _evaluators}
-
     metrics_data = {
         "wer": wer_results["score"],
         "cer": cer_results["score"],
         "sarvam_intent_score": intent_entity_results["intent"],
         "sarvam_entity_score": intent_entity_results["entity"],
     }
-    for name, score_dict in llm_results["scores"].items():
-        metrics_data[name] = score_dict
 
-    data = []
-    for _id, gt_text, pred_text, wer, cer, ie_row, llm_row in zip(
-        ids,
-        gt_transcripts,
-        pred_transcripts,
-        wer_results["per_row"],
-        cer_results["per_row"],
-        intent_entity_results["per_row"],
-        llm_results["per_row"],
-    ):
-        row = {
-            "id": _id,
-            "gt": gt_text,
-            "pred": pred_text,
-            "wer": wer,
-            "cer": cer,
-            "sarvam_intent_score": int(ie_row["intent_score"]),
-            "sarvam_intent_reasoning": ie_row["intent_explanation"],
-            "sarvam_entity_score": float(ie_row["entity_score"]),
-            "sarvam_entity_reasoning": ie_row["entity_explanation"],
-        }
-        for name, ev in _evaluators_by_name.items():
-            ev_result = llm_row[name]
-            if is_rating(ev):
-                row[name] = ev_result["score"]
-            else:
-                row[name] = bool(ev_result["match"])
-            row[f"{name}_reasoning"] = ev_result["reasoning"]
-        data.append(row)
+    if skip_llm_judge:
+        data = []
+        for _id, gt_text, pred_text, wer, cer, ie_row in zip(
+            ids,
+            gt_transcripts,
+            pred_transcripts,
+            wer_results["per_row"],
+            cer_results["per_row"],
+            intent_entity_results["per_row"],
+        ):
+            data.append({
+                "id": _id,
+                "gt": gt_text,
+                "pred": pred_text,
+                "wer": wer,
+                "cer": cer,
+                "sarvam_intent_score": int(ie_row["intent_score"]),
+                "sarvam_intent_reasoning": ie_row["intent_explanation"],
+                "sarvam_entity_score": float(ie_row["entity_score"]),
+                "sarvam_entity_reasoning": ie_row["entity_explanation"],
+            })
+    else:
+        _evaluators = judge_evaluators if judge_evaluators else [DEFAULT_STT_EVALUATOR]
+        require_unique_evaluator_names(_evaluators)
+        write_evaluator_config(evaluator_config_dir, _evaluators)
+        llm_results = await get_llm_judge_score(
+            gt_transcripts,
+            pred_transcripts,
+            evaluators=_evaluators,
+        )
+        for name, score_dict in llm_results["scores"].items():
+            _log(f"  {name}: {score_dict['mean']:.4f}")
+
+        _evaluators_by_name = {ev["name"]: ev for ev in _evaluators}
+        for name, score_dict in llm_results["scores"].items():
+            metrics_data[name] = score_dict
+
+        data = []
+        for _id, gt_text, pred_text, wer, cer, ie_row, llm_row in zip(
+            ids,
+            gt_transcripts,
+            pred_transcripts,
+            wer_results["per_row"],
+            cer_results["per_row"],
+            intent_entity_results["per_row"],
+            llm_results["per_row"],
+        ):
+            row = {
+                "id": _id,
+                "gt": gt_text,
+                "pred": pred_text,
+                "wer": wer,
+                "cer": cer,
+                "sarvam_intent_score": int(ie_row["intent_score"]),
+                "sarvam_intent_reasoning": ie_row["intent_explanation"],
+                "sarvam_entity_score": float(ie_row["entity_score"]),
+                "sarvam_entity_reasoning": ie_row["entity_explanation"],
+            }
+            for name, ev in _evaluators_by_name.items():
+                ev_result = llm_row[name]
+                if is_rating(ev):
+                    row[name] = ev_result["score"]
+                else:
+                    row[name] = bool(ev_result["match"])
+                row[f"{name}_reasoning"] = ev_result["reasoning"]
+            data.append(row)
 
     with open(join(output_dir, "metrics.json"), "w") as f:
         json.dump(metrics_data, f, indent=4)
@@ -1140,6 +1182,7 @@ async def run_eval_only(
     output_dir: str,
     judge_evaluators: list[dict] = None,
     language: str = "english",
+    skip_llm_judge: bool = False,
 ) -> dict:
     """Run evaluators only on a pre-existing dataset of (gt, pred) pairs.
 
@@ -1153,6 +1196,7 @@ async def run_eval_only(
             built-in STT evaluator when omitted.
         language: Language of the dataset, used to normalize text before the
             intent/entity judge. Defaults to ``english``.
+        skip_llm_judge: When True, skip LLM judge and only compute WER/CER.
 
     Returns:
         dict with status, metrics, and output_dir.
@@ -1186,6 +1230,7 @@ async def run_eval_only(
             evaluator_config_dir=output_dir,
             judge_evaluators=judge_evaluators,
             language=language,
+            skip_llm_judge=skip_llm_judge,
         )
 
         return {
@@ -1265,6 +1310,11 @@ async def main():
         action="store_true",
         help="Overwrite existing results instead of resuming from last checkpoint",
     )
+    parser.add_argument(
+        "--skip-llm-judge",
+        action="store_true",
+        help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
 
     args = parser.parse_args()
 
@@ -1306,6 +1356,7 @@ async def main():
         debug_count=args.debug_count,
         ignore_retry=args.ignore_retry,
         overwrite=args.overwrite,
+        skip_llm_judge=args.skip_llm_judge,
     )
 
     # Print summary
@@ -1329,8 +1380,15 @@ async def main():
             for k, v in metrics.items()
             if isinstance(v, dict) and "type" in v
         }
-        judge_str = ", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items())
-        print(f"  {provider}: WER={wer:.4f}, CER={cer:.4f}, Sarvam Intent Score={intent:.4f}, Sarvam Entity Score={entity:.4f}, {judge_str}")
+        parts = [
+            f"WER={wer:.4f}",
+            f"CER={cer:.4f}",
+            f"Sarvam Intent Score={intent:.4f}",
+            f"Sarvam Entity Score={entity:.4f}",
+        ]
+        if judge_scores:
+            parts.append(", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items()))
+        print(f"  {provider}: " + ", ".join(parts))
 
 
 if __name__ == "__main__":

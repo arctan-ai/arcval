@@ -31,7 +31,7 @@ The **input CSV** should have this format:
 | row_2 | this is a test          |
 | row_3 | how are you doing today |
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/tts/sample.csv) for a template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/tts/sample.csv) for a template.
 
 4. **Output directory** — where results will be saved (defaults to `./out`)
 5. **API keys** — enter the API keys for the selected providers
@@ -75,7 +75,7 @@ The config file supports:
 | `evaluators[].id`            | string | Optional unique id. Output `config.json` includes the raw `evaluators` list and an `evaluators_map` from id to name.                                                                                                                                                                                                                                                                  |
 | `evaluators[].name`          | string | Unique evaluator name. Becomes the column name in the leaderboard.                                                                                                                                                                                                                                                                                                                  |
 | `evaluators[].system_prompt` | string | Full system prompt used for this evaluator's audio LLM judge call.                                                                                                                                                                                                                                                                                                                  |
-| `evaluators[].judge_model`   | string | OpenRouter model id for this evaluator (default: `openai/gpt-audio`). Must be an audio-capable model in the [OpenRouter catalog](https://openrouter.ai/models) — for example OpenAI’s audio models or Google’s Gemini audio-capable entries; the [sample config](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/tts/config.json) uses `google/gemini-2.5-flash`. |
+| `evaluators[].judge_model`   | string | OpenRouter model id for this evaluator (default: `openai/gpt-audio`). Must be an audio-capable model in the [OpenRouter catalog](https://openrouter.ai/models) — for example OpenAI’s audio models or Google’s Gemini audio-capable entries; the [sample config](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/tts/config.json) uses `google/gemini-2.5-flash`. |
 
 Each evaluator also accepts:
 
@@ -89,7 +89,7 @@ Binary evaluators produce per-row pass/fail and a mean pass-rate. Rating evaluat
 
 When multiple evaluators are defined, each is scored independently — one audio LLM call per evaluator per row, all run in parallel — and appears as a separate column in the results and leaderboard.
 
-Refer to the [sample config](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/tts/config.json) for a template.
+Refer to the [sample config](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/tts/config.json) for a template.
 
 <Note>
   The `--config` flag is optional. When omitted, a single built-in
@@ -99,7 +99,7 @@ Refer to the [sample config](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/ma
 
 <AccordionGroup>
   <Accordion title="pronunciation (default evaluator system prompt)">
-    Matches [`DEFAULT_TTS_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/arcval/judges.py) in `arcval/judges.py` when no `--config` is passed.
+    Matches [`DEFAULT_TTS_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/arcval/judges.py) in `arcval/judges.py` when no `--config` is passed.
 
     ```text
     You are a highly accurate evaluator evaluating the audio output of a TTS model.
