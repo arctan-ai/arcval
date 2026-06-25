@@ -325,3 +325,115 @@ class TestVerifyFailureDuringRun:
         assert "✗" in result.stdout or "Verification failed" in result.stdout, (
             f"No error message in stdout: {result.stdout}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestFormatLeaderboardTable
+# ---------------------------------------------------------------------------
+
+class TestFormatLeaderboardTable:
+    """Unit tests for ``_format_leaderboard_table`` in cli.py."""
+
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from arcval.cli import _format_leaderboard_table
+
+        self._fmt = _format_leaderboard_table
+
+    def test_no_leaderboard_dir_returns_none(self, tmp_path):
+        out = tmp_path / "no_leaderboard"
+        out.mkdir()
+        assert self._fmt(str(out)) is None
+
+    def test_empty_leaderboard_dir_returns_none(self, tmp_path):
+        lb_dir = tmp_path / "leaderboard"
+        lb_dir.mkdir()
+        assert self._fmt(str(tmp_path)) is None
+
+    def test_xlsx_formatted_correctly(self, tmp_path):
+        import pandas as pd
+        from pathlib import Path
+
+        lb_dir = tmp_path / "leaderboard"
+        lb_dir.mkdir()
+        df = pd.DataFrame({
+            "provider": ["deepgram", "google"],
+            "wer": [4.2, 5.1],
+            "semantic_match": [0.92, 0.88],
+        })
+        xlsx_path = lb_dir / "stt_leaderboard.xlsx"
+        df.to_excel(xlsx_path, sheet_name="summary", index=False, engine="openpyxl")
+
+        result = self._fmt(str(tmp_path))
+
+        assert result is not None
+        assert result.startswith("```\n")
+        assert result.endswith("```")
+        assert "deepgram" in result
+        assert "google" in result
+        assert "wer" in result
+
+    def test_csv_formatted_correctly(self, tmp_path):
+        import pandas as pd
+        from pathlib import Path
+
+        lb_dir = tmp_path / "leaderboard"
+        lb_dir.mkdir()
+        df = pd.DataFrame({
+            "model": ["gpt-4.1", "gpt-5.1"],
+            "pass_rate": [85.0, 92.5],
+            "total": [50, 50],
+        })
+        csv_path = lb_dir / "llm_leaderboard.csv"
+        df.to_csv(csv_path, index=False)
+
+        result = self._fmt(str(tmp_path))
+
+        assert result is not None
+        assert "gpt-4.1" in result
+        assert "gpt-5.1" in result
+        assert "pass_rate" in result
+
+    def test_prefers_xlsx_over_csv(self, tmp_path):
+        from pathlib import Path
+        import pandas as pd
+
+        lb_dir = tmp_path / "leaderboard"
+        lb_dir.mkdir()
+        # Both XLSX and CSV exist — should read the XLSX
+        xlsx_df = pd.DataFrame({"source": ["xlsx"]})
+        csv_df = pd.DataFrame({"source": ["csv"]})
+        xlsx_df.to_excel(lb_dir / "results.xlsx", index=False, engine="openpyxl")
+        csv_df.to_csv(lb_dir / "results.csv", index=False)
+
+        result = self._fmt(str(tmp_path))
+
+        assert result is not None
+        assert "xlsx" in result
+        assert "csv" not in result
+
+    def test_truncates_at_12_rows(self, tmp_path):
+        from pathlib import Path
+        import pandas as pd
+
+        lb_dir = tmp_path / "leaderboard"
+        lb_dir.mkdir()
+        df = pd.DataFrame({"val": list(range(20))})
+        df.to_csv(lb_dir / "leaderboard.csv", index=False)
+
+        result = self._fmt(str(tmp_path))
+
+        assert result is not None
+        # Should only contain "val" header + 12 data rows
+        lines = [l for l in result.split("\n") if l.strip() and not l.startswith("```")]
+        # First line is header, remaining are data rows
+        assert len(lines) == 13, f"Expected 13 lines (header + 12 rows), got {len(lines)}: {lines}"
+
+    def test_malformed_file_returns_none(self, tmp_path):
+        lb_dir = tmp_path / "leaderboard"
+        lb_dir.mkdir()
+        bad_file = lb_dir / "stt_leaderboard.xlsx"
+        bad_file.write_text("not a real xlsx file")
+
+        result = self._fmt(str(tmp_path))
+        assert result is None

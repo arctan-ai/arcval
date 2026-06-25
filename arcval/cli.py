@@ -210,6 +210,44 @@ def _send_slack(text: str) -> None:
         pass
 
 
+def _format_leaderboard_table(output_dir: str) -> str | None:
+    """Read the leaderboard file and return a Slack mrkdwn table.
+
+    Scans ``{output_dir}/leaderboard/`` for ``.xlsx`` (STT/TTS) or ``.csv``
+    (LLM tests, simulations) and reads the summary sheet / first sheet.
+    Returns a triple-backtick code block with the data, or ``None`` if no
+    leaderboard file exists.
+    """
+    import pandas as pd
+    from pathlib import Path
+
+    leaderboard_dir = Path(output_dir) / "leaderboard"
+    if not leaderboard_dir.is_dir():
+        return None
+
+    files = sorted(leaderboard_dir.iterdir())
+    xlsx = [f for f in files if f.suffix == ".xlsx"]
+    csv = [f for f in files if f.suffix == ".csv"]
+
+    if not xlsx and not csv:
+        return None
+
+    try:
+        if xlsx:
+            df = pd.read_excel(xlsx[0], sheet_name=0, engine="openpyxl")
+        else:
+            df = pd.read_csv(csv[0])
+
+        # Truncate to first 12 rows so the message stays within Slack's 4k limit
+        if len(df) > 12:
+            df = df.head(12)
+
+        table_str = df.to_string(index=False)
+        return f"```\n{table_str}\n```"
+    except Exception:
+        return None
+
+
 def main():
     """Main CLI entry point that dispatches to component-specific scripts."""
     # Load environment variables from .env file
@@ -967,12 +1005,17 @@ Examples:
         if slack_enabled:
             emoji = "✅" if e.code == 0 else "❌"
             status = "Complete" if e.code == 0 else "Failed"
-            _send_slack(
+            msg = (
                 f"{emoji} Arcval Run {status}\n"
                 f"• Command: `{desc}`\n"
                 f"• Output: `{os.path.abspath(args.output_dir)}`\n"
                 f"• Status: {'Success' if e.code == 0 else f'Error (exit {e.code})'}"
             )
+            if e.code == 0:
+                leaderboard_block = _format_leaderboard_table(args.output_dir)
+                if leaderboard_block:
+                    msg += f"\n\n*Leaderboard:*\n{leaderboard_block}"
+            _send_slack(msg)
         raise
 
     except Exception as e:
@@ -991,12 +1034,16 @@ Examples:
 
     else:
         if slack_enabled:
-            _send_slack(
+            msg = (
                 f"✅ Arcval Run Complete\n"
                 f"• Command: `{desc}`\n"
                 f"• Output: `{os.path.abspath(args.output_dir)}`\n"
                 f"• Status: Success"
             )
+            leaderboard_block = _format_leaderboard_table(args.output_dir)
+            if leaderboard_block:
+                msg += f"\n\n*Leaderboard:*\n{leaderboard_block}"
+            _send_slack(msg)
 
 
 if __name__ == "__main__":
