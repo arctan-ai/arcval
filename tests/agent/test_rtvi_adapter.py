@@ -53,7 +53,7 @@ class TestBuildSerializedTranscript(unittest.TestCase):
     def test_role_flipping(self):
         ctx = MagicMock()
         ctx.get_messages.return_value = [
-            {"role": "user", "content": "hi"},      # → assistant
+            {"role": "user", "content": "hi"},  # → assistant
             {"role": "assistant", "content": "hello"},  # → user
         ]
         adapter = _make_adapter(context=ctx)
@@ -85,14 +85,16 @@ class TestBuildSerializedTranscript(unittest.TestCase):
         ctx.get_messages.return_value = [
             {"role": "user", "content": "hi"},
         ]
-        tool_calls = [{
-            "position": 0,
-            "data": {
-                "tool_call_id": "call_1",
-                "function_name": "foo",
-                "args": {"x": 1},
-            },
-        }]
+        tool_calls = [
+            {
+                "position": 0,
+                "data": {
+                    "tool_call_id": "call_1",
+                    "function_name": "foo",
+                    "args": {"x": 1},
+                },
+            }
+        ]
         adapter = _make_adapter(context=ctx, tool_calls=tool_calls)
         result = adapter._build_serialized_transcript()
         # First entry is tool_calls, then the message
@@ -104,14 +106,16 @@ class TestBuildSerializedTranscript(unittest.TestCase):
         ctx.get_messages.return_value = [
             {"role": "user", "content": "hi"},
         ]
-        tool_calls = [{
-            "position": 5,
-            "data": {
-                "tool_call_id": "call_x",
-                "function_name": "y",
-                "args": {},
-            },
-        }]
+        tool_calls = [
+            {
+                "position": 5,
+                "data": {
+                    "tool_call_id": "call_x",
+                    "function_name": "y",
+                    "args": {},
+                },
+            }
+        ]
         adapter = _make_adapter(context=ctx, tool_calls=tool_calls)
         result = adapter._build_serialized_transcript()
         # Tool call at position 5 (after all messages) appended
@@ -135,6 +139,7 @@ class TestSaveTranscript(unittest.TestCase):
             adapter = _make_adapter(output_dir=tmp)
             adapter._save_transcript([{"role": "assistant", "content": "hi"}])
             from arcval.agent.run_simulation import TRANSCRIPT_FILE_NAME
+
             transcript_path = Path(tmp) / TRANSCRIPT_FILE_NAME
             self.assertTrue(transcript_path.exists())
             data = json.loads(transcript_path.read_text())

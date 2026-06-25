@@ -54,9 +54,7 @@ class TestTTSValidateInputFile(unittest.TestCase):
         from arcval.tts.eval import validate_tts_input_file
 
         with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
-            pd.DataFrame({"id": ["1"], "text": ["hello"]}).to_csv(
-                f.name, index=False
-            )
+            pd.DataFrame({"id": ["1"], "text": ["hello"]}).to_csv(f.name, index=False)
             path = f.name
         try:
             ok, err = validate_tts_input_file(path)
@@ -175,8 +173,9 @@ class TestSynthesizeSpeechRouter(unittest.IsolatedAsyncioTestCase):
 
         fake = AsyncMock(return_value={"ttfb": 0.42})
 
-        with patch.object(tts_eval, "synthesize_openai", fake), patch.object(
-            tts_eval, "create_langfuse_audio_media", lambda p: None
+        with (
+            patch.object(tts_eval, "synthesize_openai", fake),
+            patch.object(tts_eval, "create_langfuse_audio_media", lambda p: None),
         ):
             result = await tts_eval.synthesize_speech.__wrapped__(
                 "hello", "openai", "english", "/tmp/x.wav"

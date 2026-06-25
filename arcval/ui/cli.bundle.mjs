@@ -49838,10 +49838,35 @@ function SimulationsApp({ onBack }) {
 // source/app.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
 function getModeLabel(mode2) {
-  return mode2 === "tts" ? "TTS" : "STT";
+  if (mode2 === "tts") return "TTS";
+  if (mode2 === "arctan-eval") return "Arctan Eval";
+  return "STT";
 }
 function getAllProviders(mode2) {
   return mode2 === "tts" ? TTS_PROVIDERS : STT_PROVIDERS;
+}
+function getProviderMode(mode2) {
+  return mode2 === "tts" ? "tts" : "stt";
+}
+function isSttLikeMode(mode2) {
+  return mode2 !== "tts";
+}
+function getLeaderboardFilename(mode2) {
+  if (mode2 === "tts") return "tts_leaderboard.xlsx";
+  if (mode2 === "arctan-eval") return "arctan_eval_leaderboard.xlsx";
+  return "stt_leaderboard.xlsx";
+}
+function getProviderMetricsPath(outputDir, provider, mode2) {
+  if (mode2 === "arctan-eval") {
+    return path5.join(outputDir, "baseline", provider, "metrics.json");
+  }
+  return path5.join(outputDir, provider, "metrics.json");
+}
+function getProviderResultsPath(outputDir, provider, mode2) {
+  if (mode2 === "arctan-eval") {
+    return path5.join(outputDir, "baseline", provider, "results.csv");
+  }
+  return path5.join(outputDir, provider, "results.csv");
 }
 var RESERVED_METRIC_KEYS = /* @__PURE__ */ new Set(["wer", "ttfb", "count", "provider"]);
 function isEvaluatorEntry(value) {
@@ -49962,7 +49987,7 @@ function ProviderSelectStep({
 }) {
   const allProviders = getAllProviders(mode2);
   const availableProviders = (0, import_react25.useMemo)(
-    () => getProvidersForLanguage(language, mode2),
+    () => getProvidersForLanguage(language, getProviderMode(mode2)),
     [language, mode2]
   );
   use_input_default((_input, key) => {
@@ -50141,6 +50166,7 @@ function ConfigInputStep({
   ] });
 }
 function ConfigOutputStep({
+  mode: mode2,
   providers,
   onComplete,
   onBack
@@ -50155,15 +50181,22 @@ function ConfigOutputStep({
   const checkExistingOutput = (outputDir) => {
     const existing = [];
     for (const provider of providers) {
-      const providerDir = path5.join(outputDir, provider);
-      if (fs6.existsSync(providerDir)) {
-        try {
-          const contents = fs6.readdirSync(providerDir);
-          if (contents.length > 0) {
-            existing.push(provider);
-          }
-        } catch {
+      const providerDirs = mode2 === "arctan-eval" ? [
+        path5.join(outputDir, "baseline", provider),
+        path5.join(outputDir, "arctan", provider)
+      ] : [path5.join(outputDir, provider)];
+      const hasExisting = providerDirs.some((providerDir) => {
+        if (!fs6.existsSync(providerDir)) {
+          return false;
         }
+        try {
+          return fs6.readdirSync(providerDir).length > 0;
+        } catch {
+          return false;
+        }
+      });
+      if (hasExisting) {
+        existing.push(provider);
       }
     }
     return existing;
@@ -50364,7 +50397,7 @@ function KeySetupStep({
     });
     seen.add("OPENAI_API_KEY");
     for (const id of selectedProviders) {
-      const p = getProviderById(id, mode2);
+      const p = getProviderById(id, getProviderMode(mode2));
       if (p && !seen.has(p.envVar)) {
         result.push({
           envVar: p.envVar,
@@ -50498,7 +50531,7 @@ function RunStep({
     } else {
       args.push("--no-skip-intent-entity");
     }
-    if (isLastProvider) {
+    if (isLastProvider && config.mode !== "arctan-eval") {
       args.push("--leaderboard");
     }
     return args;
@@ -50557,10 +50590,10 @@ function RunStep({
       let metrics = void 0;
       if (code === 0) {
         try {
-          const metricsPath = path5.join(
+          const metricsPath = getProviderMetricsPath(
             config.outputDir,
             provider,
-            "metrics.json"
+            config.mode
           );
           const raw = JSON.parse(fs6.readFileSync(metricsPath, "utf-8"));
           const evaluatorScores = evaluatorScoresFromMetrics(raw);
@@ -50568,6 +50601,21 @@ function RunStep({
             metrics = {
               ...evaluatorScores,
               ttfb: raw.ttfb?.mean ?? raw.ttfb ?? 0
+            };
+          } else if (config.mode === "arctan-eval") {
+            const arctanMetricsPath = path5.join(
+              config.outputDir,
+              "arctan",
+              provider,
+              "metrics.json"
+            );
+            const arctanRaw = JSON.parse(
+              fs6.readFileSync(arctanMetricsPath, "utf-8")
+            );
+            metrics = {
+              baseline_wer: raw.wer ?? 0,
+              arctan_wer: arctanRaw.wer ?? 0,
+              wer_delta: (arctanRaw.wer ?? 0) - (raw.wer ?? 0)
             };
           } else {
             metrics = {
@@ -50631,6 +50679,16 @@ function RunStep({
       }
       if (typeof m.ttfb === "number") {
         parts.push(`ttfb: ${m.ttfb.toFixed(2)}s`);
+      }
+    } else if (config.mode === "arctan-eval") {
+      if (typeof m.baseline_wer === "number") {
+        parts.push(`base wer: ${m.baseline_wer.toFixed(2)}`);
+      }
+      if (typeof m.arctan_wer === "number") {
+        parts.push(`arctan wer: ${m.arctan_wer.toFixed(2)}`);
+      }
+      if (typeof m.wer_delta === "number") {
+        parts.push(`delta: ${m.wer_delta.toFixed(2)}`);
       }
     } else {
       if (typeof m.wer === "number") {
@@ -50706,16 +50764,16 @@ function LeaderboardStep({ config }) {
     const results = [];
     for (const provider of config.providers) {
       try {
-        const metricsPath = path5.join(
+        const metricsPath = getProviderMetricsPath(
           config.outputDir,
           provider,
-          "metrics.json"
+          config.mode
         );
         const data = JSON.parse(fs6.readFileSync(metricsPath, "utf-8"));
-        const resultsPath = path5.join(
+        const resultsPath = getProviderResultsPath(
           config.outputDir,
           provider,
-          "results.csv"
+          config.mode
         );
         let count = 0;
         try {
@@ -50731,6 +50789,23 @@ function LeaderboardStep({ config }) {
             ttfb: data.ttfb?.mean ?? data.ttfb ?? 0,
             count
           });
+        } else if (config.mode === "arctan-eval") {
+          const arctanMetricsPath = path5.join(
+            config.outputDir,
+            "arctan",
+            provider,
+            "metrics.json"
+          );
+          const arctanData = JSON.parse(
+            fs6.readFileSync(arctanMetricsPath, "utf-8")
+          );
+          results.push({
+            provider,
+            baseline_wer: data.wer ?? 0,
+            arctan_wer: arctanData.wer ?? 0,
+            wer_delta: (arctanData.wer ?? 0) - (data.wer ?? 0),
+            count
+          });
         } else {
           results.push({
             provider,
@@ -50743,7 +50818,7 @@ function LeaderboardStep({ config }) {
       }
     }
     setMetrics(results);
-  }, []);
+  }, [config.mode, config.outputDir, config.providers]);
   const parseCSVLine = (line) => {
     const result = [];
     let current = "";
@@ -50769,11 +50844,63 @@ function LeaderboardStep({ config }) {
   };
   (0, import_react25.useEffect)(() => {
     if (!selectedProvider) return;
+    if (config.mode === "arctan-eval") {
+      try {
+        const baselinePath = path5.join(
+          config.outputDir,
+          "baseline",
+          selectedProvider,
+          "results.csv"
+        );
+        const arctanPath = path5.join(
+          config.outputDir,
+          "arctan",
+          selectedProvider,
+          "results.csv"
+        );
+        const parseResults = (csvPath) => {
+          const csvContent = fs6.readFileSync(csvPath, "utf-8");
+          const lines = csvContent.trim().split("\n");
+          if (lines.length < 2) {
+            return [];
+          }
+          const headers = parseCSVLine(lines[0]);
+          return lines.slice(1).map((line) => {
+            const values = parseCSVLine(line);
+            const row = {};
+            headers.forEach((h, idx) => {
+              row[h] = values[idx] || "";
+            });
+            return row;
+          });
+        };
+        const baselineRows = parseResults(baselinePath);
+        const arctanRows = parseResults(arctanPath);
+        const arctanById = new Map(arctanRows.map((row) => [row.id, row]));
+        const merged = baselineRows.map((row) => {
+          const arctanRow = arctanById.get(row.id) || {};
+          return {
+            id: row.id || "",
+            gt: row.gt || "",
+            baseline_pred: row.pred || "",
+            arctan_pred: arctanRow.pred || ""
+          };
+        });
+        setProviderResults(merged);
+        setScrollOffset(0);
+        setSelectedRowIdx(0);
+        setExpandedRows(/* @__PURE__ */ new Set());
+      } catch {
+        setProviderResults([]);
+      }
+      setEvaluatorMeta({});
+      return;
+    }
     try {
-      const resultsPath = path5.join(
+      const resultsPath = getProviderResultsPath(
         config.outputDir,
         selectedProvider,
-        "results.csv"
+        config.mode
       );
       const csvContent = fs6.readFileSync(resultsPath, "utf-8");
       const lines = csvContent.trim().split("\n");
@@ -50812,17 +50939,17 @@ function LeaderboardStep({ config }) {
       setProviderResults([]);
     }
     try {
-      const metricsPath = path5.join(
+      const metricsPath = getProviderMetricsPath(
         config.outputDir,
         selectedProvider,
-        "metrics.json"
+        config.mode
       );
       const data = JSON.parse(fs6.readFileSync(metricsPath, "utf-8"));
       setEvaluatorMeta(evaluatorMetaFromMetrics(data));
     } catch {
       setEvaluatorMeta({});
     }
-  }, [selectedProvider, config.outputDir]);
+  }, [selectedProvider, config.outputDir, config.mode]);
   const playAudio = (rowId) => {
     if (audioProcessRef.current) {
       audioProcessRef.current.kill();
@@ -50958,7 +51085,7 @@ function LeaderboardStep({ config }) {
   }
   const leaderboardDir = path5.join(config.outputDir, "leaderboard");
   const resolvedOutputDir = path5.resolve(config.outputDir);
-  const leaderboardFile = config.mode === "tts" ? "tts_leaderboard.xlsx" : "stt_leaderboard.xlsx";
+  const leaderboardFile = getLeaderboardFilename(config.mode);
   if (view === "provider-detail" && selectedProvider) {
     const visibleRows = providerResults.slice(
       scrollOffset,
@@ -51037,7 +51164,23 @@ function LeaderboardStep({ config }) {
               ))
             ] }, idx);
           })
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        ] }) : config.mode === "arctan-eval" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          Table,
+          {
+            columns: [
+              { key: "id", label: "ID", width: 10 },
+              { key: "gt", label: "Ground Truth", width: 22 },
+              { key: "baseline_pred", label: "Baseline", width: 22 },
+              { key: "arctan_pred", label: "Arctan", width: 22 }
+            ],
+            data: visibleRows.map((r) => ({
+              id: truncate(String(r.id || ""), 10),
+              gt: truncate(String(r.gt || ""), 22),
+              baseline_pred: truncate(String(r.baseline_pred || ""), 22),
+              arctan_pred: truncate(String(r.arctan_pred || ""), 22)
+            }))
+          }
+        ) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
           Table,
           {
             columns: [
@@ -51080,7 +51223,7 @@ function LeaderboardStep({ config }) {
           " ",
           "of ",
           providerResults.length,
-          config.mode === "tts" ? " | \u2191\u2193 navigate, Enter/p play, s stop" : " | \u2191\u2193 navigate, Enter to expand/collapse"
+          config.mode === "tts" ? " | \u2191\u2193 navigate, Enter/p play, s stop" : config.mode === "arctan-eval" ? "" : " | \u2191\u2193 navigate, Enter to expand/collapse"
         ] }) }),
         config.mode === "tts" && providerResults.length <= MAX_VISIBLE_ROWS && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { marginTop: 1, children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "\u2191\u2193 navigate | " }),
@@ -51127,7 +51270,7 @@ function LeaderboardStep({ config }) {
             ] }, idx);
           })
         ] }),
-        config.mode !== "tts" && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { marginTop: 1, flexDirection: "column", children: [
+        config.mode !== "tts" && config.mode !== "arctan-eval" && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { marginTop: 1, flexDirection: "column", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { bold: true, dimColor: true, children: "Row Details:" }),
           visibleRows.map((r, idx) => {
             const absoluteIdx = scrollOffset + idx;
@@ -51208,7 +51351,7 @@ function LeaderboardStep({ config }) {
           })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: config.mode === "tts" ? "q/Esc back | \u2191\u2193 navigate | Enter/p play | s stop" : "q/Esc back | \u2191\u2193 navigate | Enter to expand/collapse" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: config.mode === "tts" ? "q/Esc back | \u2191\u2193 navigate | Enter/p play | s stop" : config.mode === "arctan-eval" ? "q/Esc back" : "q/Esc back | \u2191\u2193 navigate | Enter to expand/collapse" }) })
     ] });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
@@ -51245,6 +51388,24 @@ function LeaderboardStep({ config }) {
             provider: m.provider,
             ...evaluatorCells(m),
             ttfb: typeof m.ttfb === "number" ? m.ttfb.toFixed(2) + "s" : "-",
+            count: String(m.count)
+          }))
+        }
+      ) : config.mode === "arctan-eval" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        Table,
+        {
+          columns: [
+            { key: "provider", label: "Provider", width: 14 },
+            { key: "baseline_wer", label: "Base WER", width: 10, align: "right" },
+            { key: "arctan_wer", label: "Arctan WER", width: 12, align: "right" },
+            { key: "wer_delta", label: "Delta", width: 8, align: "right" },
+            { key: "count", label: "Count", width: 6, align: "right" }
+          ],
+          data: metrics.map((m) => ({
+            provider: m.provider,
+            baseline_wer: typeof m.baseline_wer === "number" ? m.baseline_wer.toFixed(2) : "-",
+            arctan_wer: typeof m.arctan_wer === "number" ? m.arctan_wer.toFixed(2) : "-",
+            wer_delta: typeof m.wer_delta === "number" ? m.wer_delta.toFixed(2) : "-",
             count: String(m.count)
           }))
         }
@@ -51299,6 +51460,21 @@ function LeaderboardStep({ config }) {
             }
           )
         ] })
+      ] }) : config.mode === "arctan-eval" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { marginTop: 1, flexDirection: "column", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { bold: true, children: "WER Delta " }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "(arctan - baseline; lower is better)" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          BarChart,
+          {
+            data: [...metrics].sort((a, b) => a.wer_delta - b.wer_delta).map((m) => ({
+              label: m.provider,
+              value: m.wer_delta,
+              color: "yellow"
+            }))
+          }
+        )
       ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { marginTop: 1, flexDirection: "column", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
@@ -51356,7 +51532,26 @@ function LeaderboardStep({ config }) {
             "/audios/"
           ] })
         ] }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
+        config.mode === "arctan-eval" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { children: "  Baseline:    " }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Text, { color: "cyan", children: [
+              resolvedOutputDir,
+              "/baseline/",
+              "<provider>",
+              "/results.csv"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { children: "  Arctan:      " }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Text, { color: "cyan", children: [
+              resolvedOutputDir,
+              "/arctan/",
+              "<provider>",
+              "/results.csv"
+            ] })
+          ] })
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { children: "  Results:     " }),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Text, { color: "cyan", children: [
             resolvedOutputDir,
@@ -51394,6 +51589,10 @@ function MainMenu({ onSelect }) {
       SelectInput,
       {
         items: [
+          {
+            label: "Arctan Eval           Compare baseline vs isolated STT",
+            value: "arctan-eval"
+          },
           {
             label: "STT Evaluation        Benchmark speech-to-text providers",
             value: "stt"
@@ -51502,6 +51701,7 @@ function EvalApp({
       return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
         ConfigOutputStep,
         {
+          mode: config.mode,
           providers: config.providers,
           onComplete: (dir, overwrite) => {
             setConfig((c) => ({ ...c, outputDir: dir, overwrite }));
@@ -51517,7 +51717,9 @@ function EvalApp({
           mode: config.mode,
           onComplete: (configFile) => {
             setConfig((c) => ({ ...c, configFile }));
-            setStep(config.mode === "stt" ? "config-skip-intent-entity" : "setup-keys");
+            setStep(
+              isSttLikeMode(config.mode) ? "config-skip-intent-entity" : "setup-keys"
+            );
           },
           onBack: () => setStep("config-output")
         }
@@ -51578,6 +51780,14 @@ function App2({ mode: mode2 }) {
         EvalApp,
         {
           evalMode: "stt",
+          onBack: mode2 === "menu" ? goToMenu : void 0
+        }
+      );
+    case "arctan-eval":
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        EvalApp,
+        {
+          evalMode: "arctan-eval",
           onBack: mode2 === "menu" ? goToMenu : void 0
         }
       );

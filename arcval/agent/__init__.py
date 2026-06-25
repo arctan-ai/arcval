@@ -212,9 +212,7 @@ class _Simulation:
             for eval_result in evaluation_results:
                 criterion_name = eval_result["name"]
                 # value works for both binary (0/1) and rating (int score)
-                metrics_by_criterion[criterion_name].append(
-                    float(eval_result["value"])
-                )
+                metrics_by_criterion[criterion_name].append(float(eval_result["value"]))
 
             if stt_judge and "score" in stt_judge:
                 stt_llm_judge_scores.append(stt_judge["score"])

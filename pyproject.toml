@@ -22,7 +22,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "arctan-vi>=0.3.0",
+    "arctan-vi>=0.3.1",
     "backoff>=2.2.1",
     "elevenlabs>=2.31.0",
     "evaluate>=0.4.6",

@@ -244,25 +244,25 @@ wheels = [
 
 [[package]]
 name = "arctan-vi"
-version = "0.3.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "numpy" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/64/89b02269148152810f81cecf27ca3cc312970e64ee95a0379efe99625a65/arctan_vi-0.3.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e74190fa42f687049c89f423420ee8948ae33a0adf8b9b13526705637d0c496e", size = 38646444, upload-time = "2026-06-24T18:34:03.436Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/d7/79930b24221e8a57e546ca1680531cb42856b3a34945ed5b34c31daa866a/arctan_vi-0.3.0-cp310-cp310-manylinux_2_35_x86_64.whl", hash = "sha256:d724cb9e985d106ce69947a23d33a407072948e091330059d1ae4406874946e4", size = 39966089, upload-time = "2026-06-24T18:37:45.524Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/4c/c40f54e1a7be931abe082de3def0131a1d477f0aa1aa18ca950d7d2d4e17/arctan_vi-0.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:6d8bbb0ed74038f0b991c16ecc3cd733a6efd98b8506a5af624c33419fa489b9", size = 38617699, upload-time = "2026-06-24T18:38:08.311Z" },
-    { url = "https://files.pythonhosted.org/packages/02/5d/f9ad4924a3216d88588e35b362af1210049b7a7fc048be43a44cb7419519/arctan_vi-0.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a8a115fd72768b1c86a0e56a438238411a4d4a3f55f9252f258199bcb64c852c", size = 38644069, upload-time = "2026-06-24T18:38:15.235Z" },
-    { url = "https://files.pythonhosted.org/packages/f0/80/f7f3f46ed94e00ce91a5db0ea392b952c2ee25ce78bef7a4a4489d7762e1/arctan_vi-0.3.0-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:c0d02161d701d116d4646fc86b1746901d74f6ef8272b2578f2eccbe7e3936e5", size = 40037342, upload-time = "2026-06-24T18:38:51.238Z" },
-    { url = "https://files.pythonhosted.org/packages/d0/31/5e0274918554eb91a150455605c435baaf70ae38885406906b0272b48f53/arctan_vi-0.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:ee3588a75ce9226f7dbfd7d63e8cd3d1e8d9087b162d0f6d232af19df013055f", size = 38619040, upload-time = "2026-06-24T18:39:52.383Z" },
-    { url = "https://files.pythonhosted.org/packages/a3/fb/4ef4b1510386564fb8507a876f2a0b2a304243720b9d71fb682b1f92c66a/arctan_vi-0.3.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:402b16dfd705f2ed1f75f5f3386f7e60deb1159dca8ee204a0796ec2babbac66", size = 38642334, upload-time = "2026-06-24T18:40:08.869Z" },
-    { url = "https://files.pythonhosted.org/packages/7d/2a/73b8dcaf3c465e3dd64373ede56b04a89bb3cacc2c4dadbe21746e5419f9/arctan_vi-0.3.0-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:f1e56c851af7309efe76d77dedbcc68a59c80e69a495912299e135afef902f7c", size = 40136443, upload-time = "2026-06-24T18:43:54.795Z" },
-    { url = "https://files.pythonhosted.org/packages/4c/15/2a8ea0a9e5cfba40373cefa8cf59c3ba86dad3007940ee3f51bb003fc680/arctan_vi-0.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:83f2928e46ddb1271730263939fcecbf6c33aa70ab89d7fa0f0a5caee9fcad3b", size = 38611189, upload-time = "2026-06-24T18:44:29.97Z" },
-    { url = "https://files.pythonhosted.org/packages/85/cc/37757817f00f3e9c101dab6f7db3dba5ad88274b63a1bc6a910ab30e0bbb/arctan_vi-0.3.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:7b2d404d14fc3be30c81cc17b8943228ed275c6cf9a6b78d56b4c8946860cb0c", size = 38639225, upload-time = "2026-06-24T18:44:58.573Z" },
-    { url = "https://files.pythonhosted.org/packages/74/93/0f0cb2c70191b2a62418bc253616446e8d10e13b6bc02381316c4179cb4d/arctan_vi-0.3.0-cp313-cp313-manylinux_2_35_x86_64.whl", hash = "sha256:4d8f20fc9b41f75f4e7482f867836dceaced816c4f3c17a48414592feb8af13b", size = 40040927, upload-time = "2026-06-24T18:45:16.686Z" },
-    { url = "https://files.pythonhosted.org/packages/ac/12/62dc84c7f7f25b04c46b8ab5346f61fdbaf678b7d421f092f6ddc775b0c8/arctan_vi-0.3.0-cp313-cp313-win_amd64.whl", hash = "sha256:a7fec30604af84ddc96ff83c7475394c97893632577f19840d6a283069ede0f0", size = 38607621, upload-time = "2026-06-24T18:45:28.755Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/61/c4fb0a8e38ce71866d6864310e90c6b9968c96773cfd577bf2f4cd30cdf2/arctan_vi-0.3.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:fc82f7ddcba2f50bda0620d19b36a796e7efb002d62cba4682946e1971f9c046", size = 38641905, upload-time = "2026-06-25T11:53:37.748Z" },
+    { url = "https://files.pythonhosted.org/packages/65/e5/ced1fe71e42d3e761082e70436cd5e99cd43b1d32860beecf215b6f96cc7/arctan_vi-0.3.1-cp310-cp310-manylinux_2_35_x86_64.whl", hash = "sha256:ef9df5ed50d918db6c45d60a3b6c9597e64fdb190f07944d1f83aab0db1096c5", size = 39965119, upload-time = "2026-06-25T11:53:46.121Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/d7/6918364cdd854ca44fdf2cce6ffd217870194826d8e9f5981fcf7ab0cac5/arctan_vi-0.3.1-cp310-cp310-win_amd64.whl", hash = "sha256:6febaead426da97c81c6ddecbb0a34d6f22a5fefe87ca907a6efc2b4e7462304", size = 38616728, upload-time = "2026-06-25T11:53:52.108Z" },
+    { url = "https://files.pythonhosted.org/packages/12/9a/4e104128f605c1f134d47af2376c267d526abf0c51eea733834fdc26e77e/arctan_vi-0.3.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:cb798f5767b063e9d2aa96ffe4b1a01a651e3be4a6a31c34b934221f49c87100", size = 38639103, upload-time = "2026-06-25T11:53:58.569Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/28/4ec9a15c21d981016285252dfddcf59a4ac8b9b8de1c473e99c8e89b1087/arctan_vi-0.3.1-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:732d25d0789498738c350c1810faeab732b7f0978d50349e0e1b3a6949b940f7", size = 40036369, upload-time = "2026-06-25T11:54:04.81Z" },
+    { url = "https://files.pythonhosted.org/packages/73/32/0e068f85482d32c9fb2d0a516cf0106eaf3563fbe56fc63153f02c3c294d/arctan_vi-0.3.1-cp311-cp311-win_amd64.whl", hash = "sha256:0b3183a444b26d61c12748836fbb7392ef77c096b3a8952f33f60ab6a36a2d1d", size = 38618068, upload-time = "2026-06-25T11:54:10.718Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/cc/967da0d120d339b159a483adc6fbead640944b61d083929f445f2a6a3a9a/arctan_vi-0.3.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:182b76322de318f311c28eecdbb1223797aa1ca24d7d9b6268c0fe219b1aee02", size = 38637941, upload-time = "2026-06-25T11:54:16.406Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/36/4161681d506d68e673b94868b26c3408db183823574a6bf9952e096e5bf5/arctan_vi-0.3.1-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:af4f97cfb5bffb509f8a637bacbaf387ebeba1c603edaac4b66166b36f36d56e", size = 40135473, upload-time = "2026-06-25T11:54:22.916Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/0c/2cb1866bdf53f1aca9be31cc6354e32b2bcd10cc311697dcb133db33db58/arctan_vi-0.3.1-cp312-cp312-win_amd64.whl", hash = "sha256:e38eb6ca79e642f9e2ce3c08989039d81d2944f02a1c2870fb7c2c206cc829e6", size = 38610201, upload-time = "2026-06-25T11:54:29.638Z" },
+    { url = "https://files.pythonhosted.org/packages/85/d4/999d2db9210de83e4becec8dfcb4f0432813445bcf6b5feb8fa5a3296ab7/arctan_vi-0.3.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:6a773bd6a2d6d626850b20c990ec59fd8698530b166d1a9dc6ececf97619b796", size = 38634688, upload-time = "2026-06-25T11:54:35.046Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/89/b629cf9b257165dfc4cbaa8844ddec4fce3dd32e6f7d1ef253bafcf56ecd/arctan_vi-0.3.1-cp313-cp313-manylinux_2_35_x86_64.whl", hash = "sha256:f0970a4445fa237d9bc46740fbd4879a8575b1eb7d1a52a9f129e2506db156a1", size = 40039955, upload-time = "2026-06-25T11:54:41.226Z" },
+    { url = "https://files.pythonhosted.org/packages/71/40/caf3e44f2e191ecb1ca657cb66276aa1a882d670170765cf5ca9ccdf80f0/arctan_vi-0.3.1-cp313-cp313-win_amd64.whl", hash = "sha256:338fa70e8e68116590b4430630b3168ce28781daa3e694c686d0b10146ee307e", size = 38606643, upload-time = "2026-06-25T11:54:46.981Z" },
 ]
 
 [[package]]
@@ -309,7 +309,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arctan-vi", specifier = ">=0.3.0" },
+    { name = "arctan-vi", specifier = ">=0.3.1" },
     { name = "backoff", specifier = ">=2.2.1" },
     { name = "elevenlabs", specifier = ">=2.31.0" },
     { name = "evaluate", specifier = ">=0.4.6" },
