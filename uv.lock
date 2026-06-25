@@ -243,9 +243,33 @@ wheels = [
 ]
 
 [[package]]
+name = "arctan-vi"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/64/89b02269148152810f81cecf27ca3cc312970e64ee95a0379efe99625a65/arctan_vi-0.3.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e74190fa42f687049c89f423420ee8948ae33a0adf8b9b13526705637d0c496e", size = 38646444, upload-time = "2026-06-24T18:34:03.436Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/d7/79930b24221e8a57e546ca1680531cb42856b3a34945ed5b34c31daa866a/arctan_vi-0.3.0-cp310-cp310-manylinux_2_35_x86_64.whl", hash = "sha256:d724cb9e985d106ce69947a23d33a407072948e091330059d1ae4406874946e4", size = 39966089, upload-time = "2026-06-24T18:37:45.524Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/4c/c40f54e1a7be931abe082de3def0131a1d477f0aa1aa18ca950d7d2d4e17/arctan_vi-0.3.0-cp310-cp310-win_amd64.whl", hash = "sha256:6d8bbb0ed74038f0b991c16ecc3cd733a6efd98b8506a5af624c33419fa489b9", size = 38617699, upload-time = "2026-06-24T18:38:08.311Z" },
+    { url = "https://files.pythonhosted.org/packages/02/5d/f9ad4924a3216d88588e35b362af1210049b7a7fc048be43a44cb7419519/arctan_vi-0.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a8a115fd72768b1c86a0e56a438238411a4d4a3f55f9252f258199bcb64c852c", size = 38644069, upload-time = "2026-06-24T18:38:15.235Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/80/f7f3f46ed94e00ce91a5db0ea392b952c2ee25ce78bef7a4a4489d7762e1/arctan_vi-0.3.0-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:c0d02161d701d116d4646fc86b1746901d74f6ef8272b2578f2eccbe7e3936e5", size = 40037342, upload-time = "2026-06-24T18:38:51.238Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/31/5e0274918554eb91a150455605c435baaf70ae38885406906b0272b48f53/arctan_vi-0.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:ee3588a75ce9226f7dbfd7d63e8cd3d1e8d9087b162d0f6d232af19df013055f", size = 38619040, upload-time = "2026-06-24T18:39:52.383Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/fb/4ef4b1510386564fb8507a876f2a0b2a304243720b9d71fb682b1f92c66a/arctan_vi-0.3.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:402b16dfd705f2ed1f75f5f3386f7e60deb1159dca8ee204a0796ec2babbac66", size = 38642334, upload-time = "2026-06-24T18:40:08.869Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/2a/73b8dcaf3c465e3dd64373ede56b04a89bb3cacc2c4dadbe21746e5419f9/arctan_vi-0.3.0-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:f1e56c851af7309efe76d77dedbcc68a59c80e69a495912299e135afef902f7c", size = 40136443, upload-time = "2026-06-24T18:43:54.795Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/15/2a8ea0a9e5cfba40373cefa8cf59c3ba86dad3007940ee3f51bb003fc680/arctan_vi-0.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:83f2928e46ddb1271730263939fcecbf6c33aa70ab89d7fa0f0a5caee9fcad3b", size = 38611189, upload-time = "2026-06-24T18:44:29.97Z" },
+    { url = "https://files.pythonhosted.org/packages/85/cc/37757817f00f3e9c101dab6f7db3dba5ad88274b63a1bc6a910ab30e0bbb/arctan_vi-0.3.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:7b2d404d14fc3be30c81cc17b8943228ed275c6cf9a6b78d56b4c8946860cb0c", size = 38639225, upload-time = "2026-06-24T18:44:58.573Z" },
+    { url = "https://files.pythonhosted.org/packages/74/93/0f0cb2c70191b2a62418bc253616446e8d10e13b6bc02381316c4179cb4d/arctan_vi-0.3.0-cp313-cp313-manylinux_2_35_x86_64.whl", hash = "sha256:4d8f20fc9b41f75f4e7482f867836dceaced816c4f3c17a48414592feb8af13b", size = 40040927, upload-time = "2026-06-24T18:45:16.686Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/12/62dc84c7f7f25b04c46b8ab5346f61fdbaf678b7d421f092f6ddc775b0c8/arctan_vi-0.3.0-cp313-cp313-win_amd64.whl", hash = "sha256:a7fec30604af84ddc96ff83c7475394c97893632577f19840d6a283069ede0f0", size = 38607621, upload-time = "2026-06-24T18:45:28.755Z" },
+]
+
+[[package]]
 name = "arcval"
 source = { editable = "." }
 dependencies = [
+    { name = "arctan-vi" },
     { name = "backoff" },
     { name = "elevenlabs" },
     { name = "evaluate" },
@@ -285,6 +309,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "arctan-vi", specifier = ">=0.3.0" },
     { name = "backoff", specifier = ">=2.2.1" },
     { name = "elevenlabs", specifier = ">=2.31.0" },
     { name = "evaluate", specifier = ">=0.4.6" },

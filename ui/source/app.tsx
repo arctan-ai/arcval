@@ -48,6 +48,7 @@ interface EvalConfig {
   // for STT, pronunciation for TTS).
   configFile?: string;
   skipLlmJudge: boolean;
+  skipIntentEntity: boolean;
 }
 
 type Step =
@@ -56,6 +57,7 @@ type Step =
   | "config-input"
   | "config-output"
   | "config-file"
+  | "config-skip-intent-entity"
   | "config-skip-judge"
   | "setup-keys"
   | "running";
@@ -762,6 +764,58 @@ function ConfigSkipJudgeStep({
   );
 }
 
+function ConfigSkipIntentEntityStep({
+  mode,
+  skipIntentEntity,
+  onComplete,
+  onBack,
+}: {
+  mode: EvalMode;
+  skipIntentEntity: boolean;
+  onComplete: (skip: boolean) => void;
+  onBack: () => void;
+}) {
+  const choices = [
+    { label: "Yes", value: "yes" },
+    { label: "No", value: "no" },
+  ];
+
+  useInput((_input, key) => {
+    if (key.escape) {
+      onBack();
+    }
+  });
+
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Box marginBottom={1}>
+        <Text bold color="cyan">
+          Skip intent/entity judge?
+        </Text>
+      </Box>
+      <Box marginBottom={1}>
+        <Text dimColor>
+          When enabled, the Sarvam API-based intent/entity preservation judge
+          is skipped. Useful when the Sarvam API key is unavailable. When
+          disabled, intents and entities are evaluated against the ground truth.
+        </Text>
+      </Box>
+      <SelectInput
+        items={choices}
+        initialIndex={skipIntentEntity ? 0 : 1}
+        onSelect={(value: string) => {
+          onComplete(value === "yes");
+        }}
+      />
+      <Box marginTop={1}>
+        <Text dimColor>
+          Esc to go back
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════
 // Step 6: API Key Setup
 // ═════════════════════════════════════════════════════════════
@@ -985,6 +1039,11 @@ function RunStep({
     }
     if (config.skipLlmJudge) {
       args.push("--skip-llm-judge");
+    }
+    if (config.skipIntentEntity) {
+      args.push("--skip-intent-entity");
+    } else {
+      args.push("--no-skip-intent-entity");
     }
     // Generate leaderboard after the last provider eval
     if (isLastProvider) {
@@ -2159,6 +2218,7 @@ function EvalApp({
     envVars: {},
     arcval: { cmd: "arcval", args: [] },
     skipLlmJudge: false,
+    skipIntentEntity: false,
   });
   const [initError, setInitError] = useState("");
 
@@ -2251,9 +2311,22 @@ function EvalApp({
           mode={config.mode}
           onComplete={(configFile) => {
             setConfig((c) => ({ ...c, configFile }));
-            setStep(config.mode === "stt" ? "config-skip-judge" : "setup-keys");
+            setStep(config.mode === "stt" ? "config-skip-intent-entity" : "setup-keys");
           }}
           onBack={() => setStep("config-output")}
+        />
+      );
+
+    case "config-skip-intent-entity":
+      return (
+        <ConfigSkipIntentEntityStep
+          mode={config.mode}
+          skipIntentEntity={config.skipIntentEntity}
+          onComplete={(skip) => {
+            setConfig((c) => ({ ...c, skipIntentEntity: skip }));
+            setStep("config-skip-judge");
+          }}
+          onBack={() => setStep("config-file")}
         />
       );
 
@@ -2266,7 +2339,7 @@ function EvalApp({
             setConfig((c) => ({ ...c, skipLlmJudge: skip }));
             setStep("setup-keys");
           }}
-          onBack={() => setStep("config-file")}
+          onBack={() => setStep("config-skip-intent-entity")}
         />
       );
 
