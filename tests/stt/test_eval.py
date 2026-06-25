@@ -399,6 +399,47 @@ class TestSTTScoreAndWriteResults(unittest.IsolatedAsyncioTestCase):
             df = pd.read_csv(out / "results.csv")
             self.assertEqual(df.iloc[0]["accuracy"], 4)
 
+    async def test_skip_llm_judge_omits_evaluator_columns(self):
+        from arcval.stt import eval as stt_eval
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            with patch.object(
+                stt_eval, "get_llm_judge_score", AsyncMock()
+            ) as mock_judge, patch.object(
+                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            ):
+                metrics = await stt_eval._score_and_write_results(
+                    ids=["1", "2"],
+                    gt_transcripts=["hello", "world"],
+                    pred_transcripts=["hello", "world"],
+                    output_dir=str(out),
+                    evaluator_config_dir=str(out),
+                    skip_llm_judge=True,
+                )
+
+            # get_llm_judge_score should NOT have been called
+            mock_judge.assert_not_called()
+
+            # metrics should only have WER, CER, intent/entity (no evaluator)
+            self.assertIn("wer", metrics)
+            self.assertIn("cer", metrics)
+            self.assertIn("sarvam_intent_score", metrics)
+            self.assertIn("sarvam_entity_score", metrics)
+            self.assertEqual(len(metrics), 4)
+
+            # results.csv should not have evaluator columns
+            df = pd.read_csv(out / "results.csv")
+            self.assertIn("wer", df.columns)
+            self.assertIn("cer", df.columns)
+            self.assertNotIn("semantic_match", df.columns)
+            self.assertNotIn("semantic_match_reasoning", df.columns)
+
+            # metrics.json should not have evaluator entries
+            with open(out / "metrics.json") as f:
+                saved = json.load(f)
+            self.assertNotIn("semantic_match", saved)
+
 
 class TestSTTRunEvalOnly(unittest.IsolatedAsyncioTestCase):
     async def test_runs_evaluator_on_dataset(self):
@@ -449,6 +490,36 @@ class TestSTTRunEvalOnly(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["status"], "error")
         self.assertIn("does not exist", result["error"])
+
+    async def test_eval_only_skip_llm_judge(self):
+        from arcval.stt import eval as stt_eval
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ds_path = Path(tmp) / "ds.json"
+            ds_path.write_text(
+                json.dumps([
+                    {"id": "1", "gt": "hello", "pred": "hello"},
+                    {"id": "2", "gt": "world", "pred": "worl"},
+                ])
+            )
+            out = Path(tmp) / "out"
+
+            with patch.object(
+                stt_eval, "get_llm_judge_score", AsyncMock()
+            ) as mock_judge, patch.object(
+                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            ):
+                result = await stt_eval.run_eval_only(
+                    dataset_path=str(ds_path),
+                    output_dir=str(out),
+                    skip_llm_judge=True,
+                )
+
+            self.assertEqual(result["status"], "completed")
+            mock_judge.assert_not_called()
+            metrics = result["metrics"]
+            self.assertIn("wer", metrics)
+            self.assertNotIn("semantic_match", metrics)
 
 
 class _FakeSarvamWS:

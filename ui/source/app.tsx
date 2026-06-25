@@ -47,6 +47,7 @@ interface EvalConfig {
   // unset, the backend falls back to its default evaluator (semantic_match
   // for STT, pronunciation for TTS).
   configFile?: string;
+  skipLlmJudge: boolean;
 }
 
 type Step =
@@ -55,6 +56,7 @@ type Step =
   | "config-input"
   | "config-output"
   | "config-file"
+  | "config-skip-judge"
   | "setup-keys"
   | "running";
 
@@ -460,8 +462,8 @@ function ConfigInputStep({
       : "Directory containing audio files and stt.csv. Press enter to confirm.";
   const docsUrl =
     mode === "tts"
-      ? "https://arcval.artpark.ai/docs/cli/text-to-speech"
-      : "https://arcval.artpark.ai/docs/cli/speech-to-text";
+      ? "https://calibrate.artpark.ai/docs/cli/text-to-speech"
+      : "https://calibrate.artpark.ai/docs/cli/speech-to-text";
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -663,8 +665,8 @@ function ConfigFileStep({
 
   const docsUrl =
     mode === "tts"
-      ? "https://arcval.artpark.ai/docs/cli/text-to-speech"
-      : "https://arcval.artpark.ai/docs/cli/speech-to-text";
+      ? "https://calibrate.artpark.ai/docs/cli/text-to-speech"
+      : "https://calibrate.artpark.ai/docs/cli/speech-to-text";
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -703,6 +705,58 @@ function ConfigFileStep({
       )}
       <Box marginTop={1}>
         <Text dimColor>Press enter to skip, Esc to go back</Text>
+      </Box>
+    </Box>
+  );
+}
+
+function ConfigSkipJudgeStep({
+  mode,
+  skipLlmJudge,
+  onComplete,
+  onBack,
+}: {
+  mode: EvalMode;
+  skipLlmJudge: boolean;
+  onComplete: (skip: boolean) => void;
+  onBack: () => void;
+}) {
+  const choices = [
+    { label: "Yes", value: "yes" },
+    { label: "No", value: "no" },
+  ];
+
+  useInput((_input, key) => {
+    if (key.escape) {
+      onBack();
+    }
+  });
+
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Box marginBottom={1}>
+        <Text bold color="cyan">
+          Skip LLM judge?
+        </Text>
+      </Box>
+      <Box marginBottom={1}>
+        <Text dimColor>
+          When enabled, only WER/CER and intent/entity scores are computed.
+          The LLM-based semantic evaluator is skipped — faster, but no
+          semantic quality assessment.
+        </Text>
+      </Box>
+      <SelectInput
+        items={choices}
+        initialIndex={skipLlmJudge ? 0 : 1}
+        onSelect={(value: string) => {
+          onComplete(value === "yes");
+        }}
+      />
+      <Box marginTop={1}>
+        <Text dimColor>
+          Esc to go back
+        </Text>
       </Box>
     </Box>
   );
@@ -928,6 +982,9 @@ function RunStep({
     }
     if (config.configFile) {
       args.push("-c", config.configFile);
+    }
+    if (config.skipLlmJudge) {
+      args.push("--skip-llm-judge");
     }
     // Generate leaderboard after the last provider eval
     if (isLastProvider) {
@@ -2101,6 +2158,7 @@ function EvalApp({
     overwrite: false,
     envVars: {},
     arcval: { cmd: "arcval", args: [] },
+    skipLlmJudge: false,
   });
   const [initError, setInitError] = useState("");
 
@@ -2193,9 +2251,22 @@ function EvalApp({
           mode={config.mode}
           onComplete={(configFile) => {
             setConfig((c) => ({ ...c, configFile }));
-            setStep("setup-keys");
+            setStep(config.mode === "stt" ? "config-skip-judge" : "setup-keys");
           }}
           onBack={() => setStep("config-output")}
+        />
+      );
+
+    case "config-skip-judge":
+      return (
+        <ConfigSkipJudgeStep
+          mode={config.mode}
+          skipLlmJudge={config.skipLlmJudge}
+          onComplete={(skip) => {
+            setConfig((c) => ({ ...c, skipLlmJudge: skip }));
+            setStep("setup-keys");
+          }}
+          onBack={() => setStep("config-file")}
         />
       );
 
@@ -2208,7 +2279,7 @@ function EvalApp({
             setConfig((c) => ({ ...c, envVars }));
             setStep("running");
           }}
-          onBack={() => setStep("config-file")}
+          onBack={() => setStep("config-skip-judge")}
         />
       );
 

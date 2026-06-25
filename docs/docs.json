@@ -88,7 +88,7 @@
       "anchors": [
         {
           "anchor": "GitHub",
-          "href": "https://github.com/artpark-sahai-org/arcval",
+          "href": "https://github.com/artpark-sahai-org/calibrate",
           "icon": "github"
         },
 
@@ -112,13 +112,13 @@
       },
       {
         "label": "GitHub",
-        "href": "https://github.com/artpark-sahai-org/arcval"
+        "href": "https://github.com/artpark-sahai-org/calibrate"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Get Started",
-      "href": "https://arcval.artpark.ai"
+      "href": "https://calibrate.artpark.ai"
     }
   },
   "contextual": {
@@ -135,7 +135,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/artpark-sahai-org/arcval"
+      "github": "https://github.com/artpark-sahai-org/calibrate"
     }
   }
 }

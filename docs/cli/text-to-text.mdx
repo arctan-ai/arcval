@@ -22,7 +22,7 @@ There are two ways to run LLM evaluations:
 
 Define your agent's system prompt and tools directly in the config file. Arcval runs the evaluation using an LLM of your choice.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-internal-agent.json) for a full template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json) for a full template.
 
 #### `system_prompt`
 
@@ -45,7 +45,7 @@ A list of tools available to your agent. See the guide on [Configuring Tools](/g
 
 If you already have an agent running, you can connect arcval directly to it instead of redefining your agent's system prompt and tools.
 
-Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-external-agent.json) for a full template.
+Refer to [this sample](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json) for a full template.
 
 #### Connect your agent
 
@@ -271,7 +271,7 @@ Like a [response test](#response-test), the agent is run on the `history` to pro
 }
 ```
 
-See [`examples/llm/config-conversation.json`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-conversation.json) for a full template.
+See [`examples/llm/config-conversation.json`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-conversation.json) for a full template.
 
 ---
 
@@ -337,7 +337,7 @@ The simplest setup needs no top-level `evaluators`. Pass `criteria` as a string 
 
 <AccordionGroup>
   <Accordion title="correctness (default evaluator system prompt)">
-    When you omit top-level `evaluators` and pass a string `criteria`, this is the implicit evaluator from [`DEFAULT_LLM_TEST_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/arcval/judges.py) that is used by default. Your `criteria` string is substituted for `{{criteria}}`.
+    When you omit top-level `evaluators` and pass a string `criteria`, this is the implicit evaluator from [`DEFAULT_LLM_TEST_EVALUATOR`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/arcval/judges.py) that is used by default. Your `criteria` string is substituted for `{{criteria}}`.
 
     ```text
     You are a highly accurate evaluator evaluating the response of an agent to a user's message.
@@ -408,7 +408,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
 
 <AccordionGroup>
   <Accordion title="Arcval agent example">
-    Same structure as [`examples/llm/config-internal-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-internal-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
+    Same structure as [`examples/llm/config-internal-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-internal-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
 
     ```jsonc
     {
@@ -582,7 +582,7 @@ If you want thresholds different from “top-of-scale” (for example “tone at
   </Accordion>
 
   <Accordion title="Agent connection example">
-    Same structure as [`examples/llm/config-external-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/arcval/blob/main/examples/llm/config-external-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
+    Same structure as [`examples/llm/config-external-agent.json`](https://github.com/ARTPARK-SAHAI-ORG/calibrate/blob/main/examples/llm/config-external-agent.json), with documentation-only `//` comments before each test case (`jsonc` — strip comments if you paste into a strict JSON parser).
 
     ```jsonc
     {

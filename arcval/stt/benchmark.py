@@ -76,6 +76,7 @@ async def run(
     overwrite: bool = False,
     max_parallel: int = MAX_PARALLEL_PROVIDERS,
     judge_evaluators: list[dict] = None,
+    skip_llm_judge: bool = False,
 ) -> dict:
     """
     Run STT evaluation for one or more providers and generate a leaderboard.
@@ -96,6 +97,7 @@ async def run(
         judge_evaluators: Optional list of evaluator dicts (each with ``name``,
             ``system_prompt``, ``judge_model``, ``type``, ...). When omitted
             the implicit default STT evaluator runs.
+        skip_llm_judge: When True, skip LLM judge and only compute WER/CER.
 
     Returns:
         dict: Results summary with status and output paths
@@ -127,6 +129,7 @@ async def run(
                 ignore_retry=ignore_retry,
                 overwrite=overwrite,
                 judge_evaluators=judge_evaluators,
+                skip_llm_judge=skip_llm_judge,
             )
             return (provider, result)
 
@@ -239,6 +242,11 @@ async def main():
         default=None,
         help="Path to optional JSON config file with an `evaluators` list",
     )
+    parser.add_argument(
+        "--skip-llm-judge",
+        action="store_true",
+        help="Skip LLM judge evaluation and only compute WER/CER/intent-entity metrics",
+    )
 
     args = parser.parse_args()
 
@@ -299,6 +307,7 @@ async def main():
             dataset_path=args.dataset,
             output_dir=args.output_dir,
             judge_evaluators=judge_evaluators,
+            skip_llm_judge=args.skip_llm_judge,
         )
 
         print(f"\n\033[92m{'='*60}\033[0m")
@@ -319,8 +328,15 @@ async def main():
             for k, v in metrics.items()
             if isinstance(v, dict) and "type" in v
         }
-        judge_str = ", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items())
-        print(f"  WER={wer:.4f}, CER={cer:.4f}, Sarvam Intent Score={intent:.4f}, Sarvam Entity Score={entity:.4f}, {judge_str}")
+        parts = [
+            f"WER={wer:.4f}",
+            f"CER={cer:.4f}",
+            f"Sarvam Intent Score={intent:.4f}",
+            f"Sarvam Entity Score={entity:.4f}",
+        ]
+        if judge_scores:
+            parts.append(", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items()))
+        print("  " + ", ".join(parts))
         return
 
     # Benchmark (multi-provider) mode: mirror stdout/stderr into a single
@@ -354,6 +370,7 @@ async def main():
             ignore_retry=args.ignore_retry,
             overwrite=args.overwrite,
             judge_evaluators=judge_evaluators,
+            skip_llm_judge=args.skip_llm_judge,
         )
 
         # Print summary
@@ -384,10 +401,15 @@ async def main():
                     for k, v in metrics.items()
                     if isinstance(v, dict) and "type" in v
                 }
-                judge_str = ", ".join(
-                    f"{k}={v:.4f}" for k, v in judge_scores.items()
-                )
-                print(f"  {provider}: WER={wer:.4f}, CER={cer:.4f}, Sarvam Intent Score={intent:.4f}, Sarvam Entity Score={entity:.4f}, {judge_str}")
+                parts = [
+                    f"WER={wer:.4f}",
+                    f"CER={cer:.4f}",
+                    f"Sarvam Intent Score={intent:.4f}",
+                    f"Sarvam Entity Score={entity:.4f}",
+                ]
+                if judge_scores:
+                    parts.append(", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items()))
+                print(f"  {provider}: " + ", ".join(parts))
 
         if has_errors:
             sys.exit(1)

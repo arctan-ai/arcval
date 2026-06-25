@@ -49225,7 +49225,7 @@ function SimulationsApp({ onBack }) {
                   if (hasAgentUrl && config.type === "voice") {
                     setConfigInput("");
                     setInitError(
-                      "Agent connection is not supported for voice simulations. Use a arcval agent config instead (https://arcval.artpark.ai/docs/cli/simulations#set-up-your-agent) with the system prompts, tools, etc. defined in the config itself."
+                      "Agent connection is not supported for voice simulations. Use a arcval agent config instead (https://calibrate.artpark.ai/docs/cli/simulations#set-up-your-agent) with the system prompts, tools, etc. defined in the config itself."
                     );
                     return;
                   }
@@ -50110,7 +50110,7 @@ function ConfigInputStep({
   };
   const label = mode2 === "tts" ? "Input CSV" : "Input directory";
   const hint = mode2 === "tts" ? "CSV file with id and text columns. Press enter to confirm." : "Directory containing audio files and stt.csv. Press enter to confirm.";
-  const docsUrl = mode2 === "tts" ? "https://arcval.artpark.ai/docs/cli/text-to-speech" : "https://arcval.artpark.ai/docs/cli/speech-to-text";
+  const docsUrl = mode2 === "tts" ? "https://calibrate.artpark.ai/docs/cli/text-to-speech" : "https://calibrate.artpark.ai/docs/cli/speech-to-text";
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { bold: true, color: "cyan", children: "Configuration" }) }),
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
@@ -50250,7 +50250,7 @@ function ConfigFileStep({
     }
     onComplete(trimmed);
   };
-  const docsUrl = mode2 === "tts" ? "https://arcval.artpark.ai/docs/cli/text-to-speech" : "https://arcval.artpark.ai/docs/cli/speech-to-text";
+  const docsUrl = mode2 === "tts" ? "https://calibrate.artpark.ai/docs/cli/text-to-speech" : "https://calibrate.artpark.ai/docs/cli/speech-to-text";
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { bold: true, color: "cyan", children: "Evaluator config (optional)" }) }),
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { children: [
@@ -50283,6 +50283,37 @@ function ConfigFileStep({
       ] })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "Press enter to skip, Esc to go back" }) })
+  ] });
+}
+function ConfigSkipJudgeStep({
+  mode: mode2,
+  skipLlmJudge,
+  onComplete,
+  onBack
+}) {
+  const choices = [
+    { label: "Yes", value: "yes" },
+    { label: "No", value: "no" }
+  ];
+  use_input_default((_input, key) => {
+    if (key.escape) {
+      onBack();
+    }
+  });
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { bold: true, color: "cyan", children: "Skip LLM judge?" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "When enabled, only WER/CER and intent/entity scores are computed. The LLM-based semantic evaluator is skipped \u2014 faster, but no semantic quality assessment." }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      SelectInput,
+      {
+        items: choices,
+        initialIndex: skipLlmJudge ? 0 : 1,
+        onSelect: (value) => {
+          onComplete(value === "yes");
+        }
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "Esc to go back" }) })
   ] });
 }
 function KeySetupStep({
@@ -50427,6 +50458,9 @@ function RunStep({
     }
     if (config.configFile) {
       args.push("-c", config.configFile);
+    }
+    if (config.skipLlmJudge) {
+      args.push("--skip-llm-judge");
     }
     if (isLastProvider) {
       args.push("--leaderboard");
@@ -51362,7 +51396,8 @@ function EvalApp({
     outputDir: "./out",
     overwrite: false,
     envVars: {},
-    arcval: { cmd: "arcval", args: [] }
+    arcval: { cmd: "arcval", args: [] },
+    skipLlmJudge: false
   });
   const [initError, setInitError] = (0, import_react25.useState)("");
   (0, import_react25.useEffect)(() => {
@@ -51445,9 +51480,22 @@ function EvalApp({
           mode: config.mode,
           onComplete: (configFile) => {
             setConfig((c) => ({ ...c, configFile }));
-            setStep("setup-keys");
+            setStep(config.mode === "stt" ? "config-skip-judge" : "setup-keys");
           },
           onBack: () => setStep("config-output")
+        }
+      );
+    case "config-skip-judge":
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        ConfigSkipJudgeStep,
+        {
+          mode: config.mode,
+          skipLlmJudge: config.skipLlmJudge,
+          onComplete: (skip) => {
+            setConfig((c) => ({ ...c, skipLlmJudge: skip }));
+            setStep("setup-keys");
+          },
+          onBack: () => setStep("config-file")
         }
       );
     case "setup-keys":
@@ -51460,7 +51508,7 @@ function EvalApp({
             setConfig((c) => ({ ...c, envVars }));
             setStep("running");
           },
-          onBack: () => setStep("config-file")
+          onBack: () => setStep("config-skip-judge")
         }
       );
     case "running":
