@@ -205,6 +205,20 @@ Debugging notes:
   (it's in the `dev` extra).
 - `simpleaudio` build failures on Linux → missing `libasound2-dev`.
 
+### Rebuilding the Ink CLI bundle
+
+If you change anything under `ui/source/`, rebuild the bundled CLI artifact
+before finishing the task:
+
+```bash
+cd ui
+npm run bundle
+```
+
+This regenerates `arcval/ui/cli.bundle.mjs`, which is the file the Python
+package actually ships and launches. A change in `ui/source/` without the
+matching bundle update is incomplete.
+
 ### Git hooks
 `.githooks/pre-commit` runs `uv run --extra dev pytest tests/` **only when
 HEAD is on `main`**. Other branches commit instantly. Activated per-clone
@@ -263,4 +277,3 @@ pre-commit hook on `main`.
   These are gitignored runtime artifacts from local runs — don't commit them.
 - `pipecat-ai` is pinned to `0.0.98` because the API surface changes between
   versions; bump deliberately and re-test the agent simulation paths.
-
