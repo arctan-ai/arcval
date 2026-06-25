@@ -15,8 +15,12 @@ def _bin_ev(name):
 
 def _rate_ev(name, lo=1, hi=5):
     return {
-        "name": name, "system_prompt": "x", "judge_model": "openai/gpt-4.1",
-        "type": "rating", "scale_min": lo, "scale_max": hi,
+        "name": name,
+        "system_prompt": "x",
+        "judge_model": "openai/gpt-4.1",
+        "type": "rating",
+        "scale_min": lo,
+        "scale_max": hi,
     }
 
 
@@ -53,8 +57,10 @@ class TestJudgeAndEmit(unittest.IsolatedAsyncioTestCase):
         from arcval.llm.run_simulation import _judge_and_emit
 
         captured = []
-        with patch("arcval.llm.run_simulation.evaluate_simuation",
-                   AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}})):
+        with patch(
+            "arcval.llm.run_simulation.evaluate_simuation",
+            AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}}),
+        ):
             results = await _judge_and_emit(
                 transcript=[{"role": "user", "content": "Hi"}],
                 evaluators=[_bin_ev("x")],
@@ -69,9 +75,9 @@ class TestValidateSimulationEvalOnlyDataset(unittest.TestCase):
     def test_valid(self):
         from arcval.llm.run_simulation import validate_simulation_eval_only_dataset
 
-        ok, _ = validate_simulation_eval_only_dataset([
-            {"conversation_history": [{"role": "user", "content": "hi"}]}
-        ])
+        ok, _ = validate_simulation_eval_only_dataset(
+            [{"conversation_history": [{"role": "user", "content": "hi"}]}]
+        )
         self.assertTrue(ok)
 
     def test_not_list(self):
@@ -125,13 +131,20 @@ class TestRunEvalOnlySimulationTask(unittest.IsolatedAsyncioTestCase):
     async def test_basic(self):
         from arcval.llm.run_simulation import run_eval_only_simulation_task
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_simulation.evaluate_simuation",
-                   AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}})):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_simulation.evaluate_simuation",
+                AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}}),
+            ),
+        ):
             semaphore = asyncio.Semaphore(1)
             result = await run_eval_only_simulation_task(
                 semaphore=semaphore,
-                item={"conversation_history": [{"role": "user", "content": "hi"}], "name": "n1"},
+                item={
+                    "conversation_history": [{"role": "user", "content": "hi"}],
+                    "name": "n1",
+                },
                 item_index=0,
                 evaluators=[_bin_ev("x")],
                 output_dir=tmp,
@@ -148,12 +161,17 @@ class TestRunEvalOnlySimulations(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out"
-            with patch("arcval.llm.run_simulation.evaluate_simuation",
-                       AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}})):
+            with patch(
+                "arcval.llm.run_simulation.evaluate_simuation",
+                AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}}),
+            ):
                 failed = await run_eval_only_simulations(
                     config={"evaluators": [_bin_ev("x")]},
                     dataset=[
-                        {"conversation_history": [{"role": "user", "content": "hi"}], "name": "a"},
+                        {
+                            "conversation_history": [{"role": "user", "content": "hi"}],
+                            "name": "a",
+                        },
                         {"conversation_history": [{"role": "user", "content": "hi2"}]},
                     ],
                     output_dir=str(out),
@@ -171,13 +189,27 @@ class TestAggregateAndWrite(unittest.TestCase):
             results = [
                 (
                     {"name": "sim1", "x": 1.0},
-                    [{"name": "x", "value": 1.0, "type": "binary",
-                      "evaluator_id": "ev1", "scale_min": 1, "scale_max": 5}],
+                    [
+                        {
+                            "name": "x",
+                            "value": 1.0,
+                            "type": "binary",
+                            "evaluator_id": "ev1",
+                            "scale_min": 1,
+                            "scale_max": 5,
+                        }
+                    ],
                 ),
                 (
                     {"name": "sim2", "x": 0.0},
-                    [{"name": "x", "value": 0.0, "type": "binary",
-                      "evaluator_id": "ev1"}],
+                    [
+                        {
+                            "name": "x",
+                            "value": 0.0,
+                            "type": "binary",
+                            "evaluator_id": "ev1",
+                        }
+                    ],
                 ),
                 RuntimeError("oops"),
             ]
@@ -191,22 +223,29 @@ class TestRunSimulationWithAgent(unittest.IsolatedAsyncioTestCase):
 
         # Mock the user LLM
         fake_user_resp = MagicMock()
-        fake_user_resp.choices = [
-            MagicMock(message=MagicMock(content="user-msg"))
-        ]
+        fake_user_resp.choices = [MagicMock(message=MagicMock(content="user-msg"))]
 
         fake_user_client = MagicMock()
-        fake_user_client.chat.completions.create = AsyncMock(return_value=fake_user_resp)
+        fake_user_client.chat.completions.create = AsyncMock(
+            return_value=fake_user_resp
+        )
 
         fake_agent = MagicMock()
-        fake_agent.call = AsyncMock(side_effect=[
-            {"response": "agent-1", "tool_calls": []},
-            {"response": "agent-2", "tool_calls": []},
-        ])
+        fake_agent.call = AsyncMock(
+            side_effect=[
+                {"response": "agent-1", "tool_calls": []},
+                {"response": "agent-2", "tool_calls": []},
+            ]
+        )
 
-        with patch("openai.AsyncOpenAI", return_value=fake_user_client), \
-             patch.object(RS, "evaluate_simuation",
-                          AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}})):
+        with (
+            patch("openai.AsyncOpenAI", return_value=fake_user_client),
+            patch.object(
+                RS,
+                "evaluate_simuation",
+                AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}}),
+            ),
+        ):
             result = await RS.run_simulation_with_agent(
                 agent=fake_agent,
                 user_system_prompt="up",
@@ -222,11 +261,14 @@ class TestRunSimulationWithAgent(unittest.IsolatedAsyncioTestCase):
         fake_user_client = MagicMock()
         fake_agent = MagicMock()
         # 3 failed attempts (tool calls only) returns None
-        fake_agent.call = AsyncMock(return_value={"response": None, "tool_calls": [{"tool": "x"}]})
+        fake_agent.call = AsyncMock(
+            return_value={"response": None, "tool_calls": [{"tool": "x"}]}
+        )
 
-        with patch("openai.AsyncOpenAI", return_value=fake_user_client), \
-             patch.object(RS, "evaluate_simuation",
-                          AsyncMock(return_value={})):
+        with (
+            patch("openai.AsyncOpenAI", return_value=fake_user_client),
+            patch.object(RS, "evaluate_simuation", AsyncMock(return_value={})),
+        ):
             result = await RS.run_simulation_with_agent(
                 agent=fake_agent,
                 user_system_prompt="up",
@@ -243,14 +285,23 @@ class TestRunSimulationWithAgent(unittest.IsolatedAsyncioTestCase):
         fake_user_resp.choices = [MagicMock(message=MagicMock(content="hi"))]
 
         fake_user_client = MagicMock()
-        fake_user_client.chat.completions.create = AsyncMock(return_value=fake_user_resp)
+        fake_user_client.chat.completions.create = AsyncMock(
+            return_value=fake_user_resp
+        )
 
         fake_agent = MagicMock()
-        fake_agent.call = AsyncMock(return_value={"response": "agent", "tool_calls": []})
+        fake_agent.call = AsyncMock(
+            return_value={"response": "agent", "tool_calls": []}
+        )
 
-        with patch("openai.AsyncOpenAI", return_value=fake_user_client), \
-             patch.object(RS, "evaluate_simuation",
-                          AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}})):
+        with (
+            patch("openai.AsyncOpenAI", return_value=fake_user_client),
+            patch.object(
+                RS,
+                "evaluate_simuation",
+                AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}}),
+            ),
+        ):
             await RS.run_simulation_with_agent(
                 agent=fake_agent,
                 user_system_prompt="up",
@@ -269,14 +320,29 @@ class TestMainEvalOnly(unittest.IsolatedAsyncioTestCase):
             cfg = Path(tmp) / "config.json"
             cfg.write_text(json.dumps({"evaluators": [_bin_ev("x")]}))
             ds = Path(tmp) / "ds.json"
-            ds.write_text(json.dumps([
-                {"conversation_history": [{"role": "user", "content": "hi"}]}
-            ]))
-            argv = ["sim.py", "-c", str(cfg), "-o", str(Path(tmp) / "out"),
-                    "--eval-only", "--dataset", str(ds)]
-            with patch.object(sys, "argv", argv), \
-                 patch.object(RS, "evaluate_simuation",
-                              AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}})):
+            ds.write_text(
+                json.dumps(
+                    [{"conversation_history": [{"role": "user", "content": "hi"}]}]
+                )
+            )
+            argv = [
+                "sim.py",
+                "-c",
+                str(cfg),
+                "-o",
+                str(Path(tmp) / "out"),
+                "--eval-only",
+                "--dataset",
+                str(ds),
+            ]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(
+                    RS,
+                    "evaluate_simuation",
+                    AsyncMock(return_value={"x": {"match": True, "reasoning": "ok"}}),
+                ),
+            ):
                 await RS.main()
 
     async def test_main_invalid_evaluators_exits(self):
@@ -309,8 +375,16 @@ class TestMainEvalOnly(unittest.IsolatedAsyncioTestCase):
             cfg.write_text(json.dumps({"evaluators": [_bin_ev("x")]}))
             ds = Path(tmp) / "ds.json"
             ds.write_text("{bad")
-            argv = ["sim.py", "-c", str(cfg), "-o", tmp,
-                    "--eval-only", "--dataset", str(ds)]
+            argv = [
+                "sim.py",
+                "-c",
+                str(cfg),
+                "-o",
+                tmp,
+                "--eval-only",
+                "--dataset",
+                str(ds),
+            ]
             with patch.object(sys, "argv", argv):
                 with self.assertRaises(SystemExit):
                     await RS.main()
@@ -323,8 +397,16 @@ class TestMainEvalOnly(unittest.IsolatedAsyncioTestCase):
             cfg.write_text(json.dumps({"evaluators": [_bin_ev("x")]}))
             ds = Path(tmp) / "ds.json"
             ds.write_text(json.dumps({}))
-            argv = ["sim.py", "-c", str(cfg), "-o", tmp,
-                    "--eval-only", "--dataset", str(ds)]
+            argv = [
+                "sim.py",
+                "-c",
+                str(cfg),
+                "-o",
+                tmp,
+                "--eval-only",
+                "--dataset",
+                str(ds),
+            ]
             with patch.object(sys, "argv", argv):
                 with self.assertRaises(SystemExit):
                     await RS.main()
@@ -333,11 +415,13 @@ class TestMainEvalOnly(unittest.IsolatedAsyncioTestCase):
 class TestResolveSimulationParallel(unittest.TestCase):
     def test_cli_value_takes_precedence(self):
         from arcval.llm.run_simulation import _resolve_simulation_parallel
+
         with patch.dict("os.environ", {"ARCVAL_SIMULATION_PARALLEL": "7"}):
             self.assertEqual(_resolve_simulation_parallel(3), 3)
 
     def test_env_var_used_when_no_cli(self):
         from arcval.llm.run_simulation import _resolve_simulation_parallel
+
         with patch.dict("os.environ", {"ARCVAL_SIMULATION_PARALLEL": "7"}):
             self.assertEqual(_resolve_simulation_parallel(None), 7)
 
@@ -346,8 +430,10 @@ class TestResolveSimulationParallel(unittest.TestCase):
             _resolve_simulation_parallel,
             DEFAULT_SIMULATION_PARALLEL,
         )
+
         with patch.dict("os.environ", {}, clear=False):
             import os
+
             os.environ.pop("ARCVAL_SIMULATION_PARALLEL", None)
             self.assertEqual(
                 _resolve_simulation_parallel(None), DEFAULT_SIMULATION_PARALLEL
@@ -358,6 +444,7 @@ class TestResolveSimulationParallel(unittest.TestCase):
             _resolve_simulation_parallel,
             DEFAULT_SIMULATION_PARALLEL,
         )
+
         with patch.dict("os.environ", {"ARCVAL_SIMULATION_PARALLEL": "abc"}):
             self.assertEqual(
                 _resolve_simulation_parallel(None), DEFAULT_SIMULATION_PARALLEL
@@ -368,6 +455,7 @@ class TestResolveSimulationParallel(unittest.TestCase):
             _resolve_simulation_parallel,
             DEFAULT_SIMULATION_PARALLEL,
         )
+
         with patch.dict("os.environ", {"ARCVAL_SIMULATION_PARALLEL": "0"}):
             self.assertEqual(
                 _resolve_simulation_parallel(0), DEFAULT_SIMULATION_PARALLEL

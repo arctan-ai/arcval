@@ -67,7 +67,9 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
         # Patch stt_llm_judge directly (it has @backoff + @observe decorators
         # so patching text_judge inside it is unreliable).
         # tqdm_asyncio.gather may not preserve input order, so return based on input.
-        async def fake_judge(reference, prediction, evaluators=None, fallback_model=None):
+        async def fake_judge(
+            reference, prediction, evaluators=None, fallback_model=None
+        ):
             match = reference == prediction
             return {
                 "semantic_match": {
@@ -76,7 +78,9 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
                 }
             }
 
-        with patch.object(stt_metrics, "stt_llm_judge", AsyncMock(side_effect=fake_judge)):
+        with patch.object(
+            stt_metrics, "stt_llm_judge", AsyncMock(side_effect=fake_judge)
+        ):
             result = await stt_metrics.get_llm_judge_score(
                 references=["hello", "goodnight"],
                 predictions=["hello", "goodbye"],  # first matches, second doesn't
@@ -147,7 +151,9 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
             "scale_max": 5,
         }
 
-        async def fake_judge(reference, prediction, evaluators=None, fallback_model=None):
+        async def fake_judge(
+            reference, prediction, evaluators=None, fallback_model=None
+        ):
             # Return score based on whether strings match: match=5, mismatch=2
             return {
                 "semantic_accuracy": {
@@ -156,7 +162,9 @@ class TestSTTGetLLMJudgeScore(unittest.IsolatedAsyncioTestCase):
                 }
             }
 
-        with patch.object(stt_metrics, "stt_llm_judge", AsyncMock(side_effect=fake_judge)):
+        with patch.object(
+            stt_metrics, "stt_llm_judge", AsyncMock(side_effect=fake_judge)
+        ):
             result = await stt_metrics.get_llm_judge_score(
                 references=["hello", "world", "foo"],
                 predictions=["hello", "word", "foo"],  # 2 match, 1 doesn't

@@ -74,6 +74,7 @@ export function stripAnsi(str: string): string {
 export type AppMode =
   | 'menu'
   | 'stt'
+  | 'arctan-eval'
   | 'tts'
   | 'llm'
   | 'simulations';

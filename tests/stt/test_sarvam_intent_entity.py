@@ -71,7 +71,9 @@ class TestScoreAggregators(unittest.TestCase):
         m = calculate_entity_metrics([1.0, 0.0])
         self.assertEqual(m["mean"], 0.5)
         self.assertEqual(m["median"], 0.5)
-        self.assertEqual(calculate_entity_metrics([]), {"mean": 0.0, "median": 0.0, "std": 0.0})
+        self.assertEqual(
+            calculate_entity_metrics([]), {"mean": 0.0, "median": 0.0, "std": 0.0}
+        )
 
 
 def _normalizer_with_mocks():

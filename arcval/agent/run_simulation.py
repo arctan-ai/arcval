@@ -888,9 +888,7 @@ class SilencePadder(FrameProcessor):
         self._last_num_channels = 1
         self._audio_save_dir = audio_save_dir
         self._rtvi_message_adapter = rtvi_message_adapter
-        self._user_audio_chunk_indices = (
-            {}
-        )  # Track chunk indices for user audio per turn
+        self._user_audio_chunk_indices = {}  # Track chunk indices for user audio per turn
 
     async def process_frame(self, frame, direction):
         await super().process_frame(frame, direction)
@@ -909,8 +907,10 @@ class SilencePadder(FrameProcessor):
             ):
                 self._rtvi_message_adapter._sim_user_turn_pending = False
                 if self._rtvi_message_adapter._active_transcript_audio_role != "user":
-                    line = self._rtvi_message_adapter._assign_next_transcript_audio_line(
-                        role="user"
+                    line = (
+                        self._rtvi_message_adapter._assign_next_transcript_audio_line(
+                            role="user"
+                        )
                     )
                     self._rtvi_message_adapter._turn_index = line
                     eval_logger.info(f"[sim user] transcript audio index: {line}")
@@ -1225,7 +1225,9 @@ async def _run_simulation_inner(
     tts_language = (
         Language.KN
         if language == "kannada"
-        else Language.HI if language == "hindi" else Language.EN
+        else Language.HI
+        if language == "hindi"
+        else Language.EN
     )
 
     # ElevenLabs voice IDs for the simulated user. Word-level TTS so that

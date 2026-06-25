@@ -159,7 +159,11 @@ def _is_interactive_run(args) -> bool:
         return True
     if args.component in ("llm",) and args.config is None and not args.verify:
         return True
-    if args.component in ("simulations",) and (args.type is None or args.config is None) and not args.verify:
+    if (
+        args.component in ("simulations",)
+        and (args.type is None or args.config is None)
+        and not args.verify
+    ):
         return True
     return False
 
@@ -285,13 +289,14 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="arcval",
-        usage="arcval [-h] [-v] {stt,tts,llm,simulations,general,status} ...",
+        usage="arcval [-h] [-v] {stt,arctan-eval,tts,llm,simulations,general,status} ...",
         description="Voice agent evaluation and benchmarking toolkit",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
     arcval                                        # Main menu (interactive)
     arcval stt                                    # Interactive STT evaluation
+    arcval arctan-eval                            # Compare baseline vs Arctan-isolated STT
     arcval tts                                    # Interactive TTS evaluation
     arcval llm                                    # Interactive LLM tests
     arcval llm -c config.json                     # Run LLM tests directly
@@ -312,7 +317,7 @@ Examples:
     subparsers = parser.add_subparsers(
         dest="component",
         help="Component to run",
-        metavar="{stt,tts,llm,simulations,general,status}",
+        metavar="{stt,arctan-eval,tts,llm,simulations,general,status}",
     )
     subparsers.required = False  # Allow `arcval` alone for main menu
 
@@ -385,6 +390,54 @@ Examples:
         help="Skip the intent/entity preservation judge (default: yes)",
     )
     _stt_ie_group.add_argument(
+        "--no-skip-intent-entity",
+        action="store_false",
+        dest="skip_intent_entity",
+        help="Run the intent/entity preservation judge even when non-TTY",
+    )
+
+    arctan_eval_parser = subparsers.add_parser(
+        "arctan-eval",
+        help="Compare STT providers with and without Arctan voice isolation",
+    )
+    arctan_eval_parser.add_argument(
+        "-p",
+        "--provider",
+        type=str,
+        nargs="+",
+        help="STT provider(s) to evaluate (space-separated for multiple)",
+    )
+    arctan_eval_parser.add_argument("-l", "--language", type=str, default="english")
+    arctan_eval_parser.add_argument("-i", "--input-dir", type=str)
+    arctan_eval_parser.add_argument("-o", "--output-dir", type=str, default="./out")
+    arctan_eval_parser.add_argument(
+        "-f", "--input-file-name", type=str, default="stt.csv"
+    )
+    arctan_eval_parser.add_argument("-d", "--debug", action="store_true")
+    arctan_eval_parser.add_argument("-dc", "--debug_count", type=int, default=5)
+    arctan_eval_parser.add_argument("--ignore_retry", action="store_true")
+    arctan_eval_parser.add_argument("--overwrite", action="store_true")
+    arctan_eval_parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=None,
+        help="Path to optional JSON config file with judge settings (model, prompt)",
+    )
+    arctan_eval_parser.add_argument(
+        "--skip-llm-judge",
+        action="store_true",
+        help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
+    _arctan_ie_group = arctan_eval_parser.add_mutually_exclusive_group()
+    _arctan_ie_group.add_argument(
+        "--skip-intent-entity",
+        action="store_true",
+        dest="skip_intent_entity",
+        default=None,
+        help="Skip the intent/entity preservation judge (default: skip on non-TTY, prompt on TTY)",
+    )
+    _arctan_ie_group.add_argument(
         "--no-skip-intent-entity",
         action="store_false",
         dest="skip_intent_entity",
@@ -691,7 +744,9 @@ Examples:
                 from arcval.stt.benchmark import main as stt_benchmark_main
 
                 if not args.dataset:
-                    print("\033[31mError: --dataset is required with --eval-only\033[0m")
+                    print(
+                        "\033[31mError: --dataset is required with --eval-only\033[0m"
+                    )
                     sys.exit(1)
 
                 argv = ["arcval", "--eval-only", "--dataset", args.dataset]
@@ -742,6 +797,45 @@ Examples:
                 asyncio.run(stt_benchmark_main())
             else:
                 _launch_ink_ui("stt")
+
+        elif args.component == "arctan-eval":
+            _skip_ie = args.skip_intent_entity
+            if _skip_ie is None:
+                if sys.stdin.isatty():
+                    _resp = input("Skip intent/entity judge? [Y/n]: ").strip().lower()
+                    _skip_ie = _resp not in ("n", "no")
+                else:
+                    _skip_ie = True
+                print()
+
+            from arcval.arctan_eval.benchmark import main as arctan_eval_main
+
+            argv = ["arcval"]
+            if args.provider:
+                argv.extend(["-p"] + args.provider)
+            argv.extend(["-l", args.language])
+            if args.input_dir:
+                argv.extend(["-i", args.input_dir])
+            argv.extend(["-o", args.output_dir])
+            argv.extend(["-f", args.input_file_name])
+            if args.debug:
+                argv.append("-d")
+            argv.extend(["-dc", str(args.debug_count)])
+            if args.ignore_retry:
+                argv.append("--ignore_retry")
+            if args.overwrite:
+                argv.append("--overwrite")
+            if args.config:
+                argv.extend(["--config", args.config])
+            if args.skip_llm_judge:
+                argv.append("--skip-llm-judge")
+            if _skip_ie:
+                argv.append("--skip-intent-entity")
+            else:
+                argv.append("--no-skip-intent-entity")
+
+            sys.argv = argv
+            asyncio.run(arctan_eval_main())
 
         elif args.component == "tts":
             # If provider is given, run evaluation directly; otherwise launch interactive UI
@@ -838,7 +932,9 @@ Examples:
                             print(f"\nVerifying agent {_label}: {_config['agent_url']}")
                             _verify_result = asyncio.run(_agent.verify(model=_m))
                             if not _verify_result["ok"]:
-                                print(f"✗ Verification failed: {_verify_result['error']}")
+                                print(
+                                    f"✗ Verification failed: {_verify_result['error']}"
+                                )
                                 _print_sample_output(_verify_result)
                                 sys.exit(1)
                             print(f"✓ Verified")
@@ -850,9 +946,9 @@ Examples:
 
                     # Run — all models together (tests.run fans them out in parallel)
                     if _models:
-                        print(f"\n\033[92m{'='*60}\033[0m")
+                        print(f"\n\033[92m{'=' * 60}\033[0m")
                         print(f"\033[92m  Models: {', '.join(_models)}\033[0m")
-                        print(f"\033[92m{'='*60}\033[0m\n")
+                        print(f"\033[92m{'=' * 60}\033[0m\n")
                         _results = asyncio.run(
                             _tests.run(
                                 agent=_agent,
@@ -869,7 +965,9 @@ Examples:
                         }
 
                         _lb_dir = os.path.join(args.output_dir, "leaderboard")
-                        generate_leaderboard(output_dir=args.output_dir, save_dir=_lb_dir)
+                        generate_leaderboard(
+                            output_dir=args.output_dir, save_dir=_lb_dir
+                        )
                         _has_errors = print_benchmark_summary(
                             models=_models,
                             model_results=_model_results,
@@ -978,7 +1076,9 @@ Examples:
                             url=_sim_config["agent_url"],
                             headers=_sim_config.get("agent_headers"),
                         )
-                        print(f"\nVerifying agent connection: {_sim_config['agent_url']}")
+                        print(
+                            f"\nVerifying agent connection: {_sim_config['agent_url']}"
+                        )
                         _verify = asyncio.run(_sim_agent.verify())
                         if not _verify["ok"]:
                             print(f"✗ Verification failed: {_verify['error']}")
@@ -989,7 +1089,8 @@ Examples:
                         print()
 
                 sys.argv = ["arcval"] + _args_to_argv(
-                    args, exclude_keys={"component", "sim_subcmd", "type", "skip_verify"}
+                    args,
+                    exclude_keys={"component", "sim_subcmd", "type", "skip_verify"},
                 )
                 asyncio.run(llm_simulation_main())
             elif args.type == "voice":

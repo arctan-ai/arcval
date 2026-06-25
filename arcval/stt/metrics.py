@@ -216,12 +216,8 @@ async def get_intent_entity_score(
 
     langs = [language] * len(references)
     normalizer = IndicNormalizer()
-    norm_references = normalizer.normalize_texts(
-        [str(r) for r in references], langs
-    )
-    norm_predictions = normalizer.normalize_texts(
-        [str(p) for p in predictions], langs
-    )
+    norm_references = normalizer.normalize_texts([str(r) for r in references], langs)
+    norm_predictions = normalizer.normalize_texts([str(p) for p in predictions], langs)
 
     coroutines = [
         sarvam_intent_entity.intent_entity_judge(

@@ -44,20 +44,24 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
         runner_args.pipeline_idle_timeout_secs = 30
         runner_args.handle_sigint = False
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch.object(T, "create_stt_service", MagicMock()), \
-             patch.object(T, "create_tts_service", MagicMock()), \
-             patch.object(T, "OpenAILLMService"), \
-             patch.object(T, "OpenRouterLLMService", return_value=fake_llm), \
-             patch.object(T, "RTVIProcessor"), \
-             patch.object(T, "TranscriptProcessor"), \
-             patch.object(T, "AudioBufferProcessor"), \
-             patch.object(T, "Pipeline"), \
-             patch.object(T, "PipelineTask"), \
-             patch.object(T, "PipelineRunner", return_value=fake_runner), \
-             patch.object(T, "LLMContext", return_value=fake_context), \
-             patch.object(T, "LLMContextAggregatorPair"):
-            await T.run_bot(_make_bot_config("openrouter"), fake_transport, runner_args, tmp)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(T, "create_stt_service", MagicMock()),
+            patch.object(T, "create_tts_service", MagicMock()),
+            patch.object(T, "OpenAILLMService"),
+            patch.object(T, "OpenRouterLLMService", return_value=fake_llm),
+            patch.object(T, "RTVIProcessor"),
+            patch.object(T, "TranscriptProcessor"),
+            patch.object(T, "AudioBufferProcessor"),
+            patch.object(T, "Pipeline"),
+            patch.object(T, "PipelineTask"),
+            patch.object(T, "PipelineRunner", return_value=fake_runner),
+            patch.object(T, "LLMContext", return_value=fake_context),
+            patch.object(T, "LLMContextAggregatorPair"),
+        ):
+            await T.run_bot(
+                _make_bot_config("openrouter"), fake_transport, runner_args, tmp
+            )
 
     async def test_run_bot_openai(self):
         from arcval.agent import test as T
@@ -78,20 +82,24 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
         runner_args.pipeline_idle_timeout_secs = 30
         runner_args.handle_sigint = False
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch.object(T, "create_stt_service", MagicMock()), \
-             patch.object(T, "create_tts_service", MagicMock()), \
-             patch.object(T, "OpenAILLMService", return_value=fake_llm), \
-             patch.object(T, "OpenRouterLLMService"), \
-             patch.object(T, "RTVIProcessor"), \
-             patch.object(T, "TranscriptProcessor"), \
-             patch.object(T, "AudioBufferProcessor"), \
-             patch.object(T, "Pipeline"), \
-             patch.object(T, "PipelineTask"), \
-             patch.object(T, "PipelineRunner", return_value=fake_runner), \
-             patch.object(T, "LLMContext", return_value=fake_context), \
-             patch.object(T, "LLMContextAggregatorPair"):
-            await T.run_bot(_make_bot_config("openai"), fake_transport, runner_args, tmp)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(T, "create_stt_service", MagicMock()),
+            patch.object(T, "create_tts_service", MagicMock()),
+            patch.object(T, "OpenAILLMService", return_value=fake_llm),
+            patch.object(T, "OpenRouterLLMService"),
+            patch.object(T, "RTVIProcessor"),
+            patch.object(T, "TranscriptProcessor"),
+            patch.object(T, "AudioBufferProcessor"),
+            patch.object(T, "Pipeline"),
+            patch.object(T, "PipelineTask"),
+            patch.object(T, "PipelineRunner", return_value=fake_runner),
+            patch.object(T, "LLMContext", return_value=fake_context),
+            patch.object(T, "LLMContextAggregatorPair"),
+        ):
+            await T.run_bot(
+                _make_bot_config("openai"), fake_transport, runner_args, tmp
+            )
 
     async def test_run_bot_unknown_provider(self):
         from arcval.agent import test as T
@@ -99,14 +107,20 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
 
         # Bypass dataclass validation by setting __dict__
         cfg = BotConfig(
-            system_prompt="sp", language="english", tools=[],
-            stt=STTConfig(), tts=TTSConfig(), llm=LLMConfig(),
+            system_prompt="sp",
+            language="english",
+            tools=[],
+            stt=STTConfig(),
+            tts=TTSConfig(),
+            llm=LLMConfig(),
         )
         cfg.llm.provider = "bogus"
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch.object(T, "create_stt_service", MagicMock()), \
-             patch.object(T, "create_tts_service", MagicMock()):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(T, "create_stt_service", MagicMock()),
+            patch.object(T, "create_tts_service", MagicMock()),
+        ):
             with self.assertRaises(ValueError):
                 await T.run_bot(cfg, MagicMock(), MagicMock(), tmp)
 
@@ -115,13 +129,23 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
         from arcval.agent.test import BotConfig, STTConfig, TTSConfig, LLMConfig
 
         cfg = BotConfig(
-            system_prompt="sp", language="english",
+            system_prompt="sp",
+            language="english",
             tools=[
-                {"name": "wh", "description": "wh", "type": "webhook", "webhook": {
-                    "url": "http://x", "method": "POST", "headers": [],
-                }},
+                {
+                    "name": "wh",
+                    "description": "wh",
+                    "type": "webhook",
+                    "webhook": {
+                        "url": "http://x",
+                        "method": "POST",
+                        "headers": [],
+                    },
+                },
             ],
-            stt=STTConfig(), tts=TTSConfig(), llm=LLMConfig(),
+            stt=STTConfig(),
+            tts=TTSConfig(),
+            llm=LLMConfig(),
         )
 
         fake_llm = MagicMock()
@@ -129,6 +153,7 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
 
         def reg(name, fn):
             registered[name] = fn
+
         fake_llm.register_function = reg
 
         fake_transport = MagicMock()
@@ -144,18 +169,20 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
         runner_args.pipeline_idle_timeout_secs = 30
         runner_args.handle_sigint = False
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch.object(T, "create_stt_service", MagicMock()), \
-             patch.object(T, "create_tts_service", MagicMock()), \
-             patch.object(T, "OpenRouterLLMService", return_value=fake_llm), \
-             patch.object(T, "RTVIProcessor"), \
-             patch.object(T, "TranscriptProcessor"), \
-             patch.object(T, "AudioBufferProcessor"), \
-             patch.object(T, "Pipeline"), \
-             patch.object(T, "PipelineTask"), \
-             patch.object(T, "PipelineRunner", return_value=fake_runner), \
-             patch.object(T, "LLMContext", return_value=fake_context), \
-             patch.object(T, "LLMContextAggregatorPair"):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(T, "create_stt_service", MagicMock()),
+            patch.object(T, "create_tts_service", MagicMock()),
+            patch.object(T, "OpenRouterLLMService", return_value=fake_llm),
+            patch.object(T, "RTVIProcessor"),
+            patch.object(T, "TranscriptProcessor"),
+            patch.object(T, "AudioBufferProcessor"),
+            patch.object(T, "Pipeline"),
+            patch.object(T, "PipelineTask"),
+            patch.object(T, "PipelineRunner", return_value=fake_runner),
+            patch.object(T, "LLMContext", return_value=fake_context),
+            patch.object(T, "LLMContextAggregatorPair"),
+        ):
             await T.run_bot(cfg, fake_transport, runner_args, tmp)
 
         # Exercise registered handlers
@@ -169,8 +196,9 @@ class TestRunBot(unittest.IsolatedAsyncioTestCase):
         params2.function_name = "wh"
         params2.arguments = {"body": {"k": "v"}}
         params2.result_callback = AsyncMock()
-        with patch.object(T, "make_webhook_call",
-                          AsyncMock(return_value={"status": "success"})):
+        with patch.object(
+            T, "make_webhook_call", AsyncMock(return_value={"status": "success"})
+        ):
             await webhook_fn(params2)
 
 

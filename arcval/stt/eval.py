@@ -327,7 +327,9 @@ async def transcribe_sarvam(audio_path: Path, language: str) -> str:
             async with asyncio.timeout(SARVAM_STT_RECV_TIMEOUT):
                 async for message in ws:
                     if getattr(message, "type", None) == "error":
-                        error = getattr(message.data, "error", "Unknown Sarvam STT error")
+                        error = getattr(
+                            message.data, "error", "Unknown Sarvam STT error"
+                        )
                         raise RuntimeError(error)
                     if getattr(message, "type", None) != "data":
                         continue
@@ -1148,17 +1150,19 @@ async def _score_and_write_results(
             cer_results["per_row"],
             intent_entity_results["per_row"],
         ):
-            data.append({
-                "id": _id,
-                "gt": gt_text,
-                "pred": pred_text,
-                "wer": wer,
-                "cer": cer,
-                "sarvam_intent_score": int(ie_row["intent_score"]),
-                "sarvam_intent_reasoning": ie_row["intent_explanation"],
-                "sarvam_entity_score": float(ie_row["entity_score"]),
-                "sarvam_entity_reasoning": ie_row["entity_explanation"],
-            })
+            data.append(
+                {
+                    "id": _id,
+                    "gt": gt_text,
+                    "pred": pred_text,
+                    "wer": wer,
+                    "cer": cer,
+                    "sarvam_intent_score": int(ie_row["intent_score"]),
+                    "sarvam_intent_reasoning": ie_row["intent_explanation"],
+                    "sarvam_entity_score": float(ie_row["entity_score"]),
+                    "sarvam_entity_reasoning": ie_row["entity_explanation"],
+                }
+            )
     else:
         _evaluators = judge_evaluators if judge_evaluators else [DEFAULT_STT_EVALUATOR]
         require_unique_evaluator_names(_evaluators)
@@ -1428,9 +1432,9 @@ async def main():
     )
 
     # Print summary
-    print(f"\n\033[92m{'='*60}\033[0m")
+    print(f"\n\033[92m{'=' * 60}\033[0m")
     print(f"\033[92mSummary\033[0m")
-    print(f"\033[92m{'='*60}\033[0m\n")
+    print(f"\033[92m{'=' * 60}\033[0m\n")
 
     if result.get("status") == "error":
         print(f"  {provider}: \033[31mError - {result.get('error')}\033[0m")

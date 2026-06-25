@@ -17,7 +17,10 @@ class TestArgsToArgv(unittest.TestCase):
         ns.__dict__ = {"input_dir": "/tmp/x", "debug": True, "count": 5}
         # use real namespace
         import argparse
-        args = argparse.Namespace(input_dir="/tmp/x", debug=True, count=5, none_val=None)
+
+        args = argparse.Namespace(
+            input_dir="/tmp/x", debug=True, count=5, none_val=None
+        )
         argv = _args_to_argv(args)
         self.assertIn("--input-dir", argv)
         self.assertIn("/tmp/x", argv)
@@ -46,8 +49,10 @@ class TestLoadCliDotenv(unittest.TestCase):
     def test_loads_dotenv_from_current_working_directory(self):
         from arcval import cli
 
-        with patch.object(cli, "find_dotenv", return_value="/project/src/.env") as find, \
-             patch.object(cli, "load_dotenv") as load:
+        with (
+            patch.object(cli, "find_dotenv", return_value="/project/src/.env") as find,
+            patch.object(cli, "load_dotenv") as load,
+        ):
             cli._load_cli_dotenv()
 
         find.assert_called_once_with(usecwd=True)
@@ -65,8 +70,10 @@ class TestLaunchInkUI(unittest.TestCase):
     def test_no_bundle(self):
         from arcval import cli
 
-        with patch("shutil.which", return_value="/usr/bin/node"), \
-             patch("pathlib.Path.exists", return_value=False):
+        with (
+            patch("shutil.which", return_value="/usr/bin/node"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
             with self.assertRaises(SystemExit):
                 cli._launch_ink_ui("stt")
 
@@ -74,9 +81,11 @@ class TestLaunchInkUI(unittest.TestCase):
         from arcval import cli
 
         fake_result = MagicMock(returncode=0)
-        with patch("shutil.which", return_value="/usr/bin/node"), \
-             patch("pathlib.Path.exists", return_value=True), \
-             patch("subprocess.run", return_value=fake_result):
+        with (
+            patch("shutil.which", return_value="/usr/bin/node"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("subprocess.run", return_value=fake_result),
+        ):
             with self.assertRaises(SystemExit) as ctx:
                 cli._launch_ink_ui("stt")
         self.assertEqual(ctx.exception.code, 0)
@@ -91,7 +100,9 @@ class TestPrintSampleOutput(unittest.TestCase):
     def test_dict_with_response(self):
         from arcval.cli import _print_sample_output
 
-        _print_sample_output({"sample_output": {"response": "Hi", "tool_calls": [{"x": 1}]}})
+        _print_sample_output(
+            {"sample_output": {"response": "Hi", "tool_calls": [{"x": 1}]}}
+        )
 
     def test_dict_with_only_response(self):
         from arcval.cli import _print_sample_output
@@ -101,7 +112,9 @@ class TestPrintSampleOutput(unittest.TestCase):
     def test_dict_with_only_tool_calls(self):
         from arcval.cli import _print_sample_output
 
-        _print_sample_output({"sample_output": {"response": None, "tool_calls": [{"x": 1}]}})
+        _print_sample_output(
+            {"sample_output": {"response": None, "tool_calls": [{"x": 1}]}}
+        )
 
     def test_non_dict_sample(self):
         from arcval.cli import _print_sample_output
@@ -119,17 +132,24 @@ class TestRunAgentVerify(unittest.TestCase):
     def test_success_with_model(self):
         from arcval import cli
 
-        fake_result = {"ok": True, "sample_output": {"response": "Hi", "tool_calls": []}}
-        with patch("arcval.connections.TextAgentConnection.verify",
-                   AsyncMock(return_value=fake_result)):
+        fake_result = {
+            "ok": True,
+            "sample_output": {"response": "Hi", "tool_calls": []},
+        }
+        with patch(
+            "arcval.connections.TextAgentConnection.verify",
+            AsyncMock(return_value=fake_result),
+        ):
             cli._run_agent_verify("http://x", '{"K": "V"}', models=["m1"])
 
     def test_failure_exits(self):
         from arcval import cli
 
         fake_result = {"ok": False, "error": "boom"}
-        with patch("arcval.connections.TextAgentConnection.verify",
-                   AsyncMock(return_value=fake_result)):
+        with patch(
+            "arcval.connections.TextAgentConnection.verify",
+            AsyncMock(return_value=fake_result),
+        ):
             with self.assertRaises(SystemExit):
                 cli._run_agent_verify("http://x", None)
 
@@ -137,11 +157,13 @@ class TestRunAgentVerify(unittest.TestCase):
 class TestMainDispatch(unittest.TestCase):
     def _run_with_argv(self, argv):
         from arcval.cli import main
+
         with patch.object(sys, "argv", argv):
             main()
 
     def test_no_component_launches_menu(self):
         from arcval import cli
+
         with patch.object(cli, "_launch_ink_ui") as mock:
             mock.side_effect = SystemExit(0)
             with self.assertRaises(SystemExit):
@@ -149,6 +171,7 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_stt_no_provider_launches_ui(self):
         from arcval import cli
+
         with patch.object(cli, "_launch_ink_ui") as mock:
             mock.side_effect = SystemExit(0)
             with self.assertRaises(SystemExit):
@@ -156,21 +179,33 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_stt_with_provider_runs_benchmark(self):
         from arcval import cli
+
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "audios").mkdir()
             import pandas as pd
+
             pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
                 base / "stt.csv", index=False
             )
             (base / "audios" / "a.wav").write_bytes(b"\x00")
 
             with patch("arcval.stt.benchmark.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "stt", "-p", "deepgram",
-                    "-i", str(base), "-o", str(base / "out"),
-                    "-d", "--ignore_retry", "--overwrite",
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "stt",
+                        "-p",
+                        "deepgram",
+                        "-i",
+                        str(base),
+                        "-o",
+                        str(base / "out"),
+                        "-d",
+                        "--ignore_retry",
+                        "--overwrite",
+                    ]
+                )
 
     def test_stt_eval_only_no_dataset_exits(self):
         with self.assertRaises(SystemExit):
@@ -181,10 +216,17 @@ class TestMainDispatch(unittest.TestCase):
             ds = Path(tmp) / "ds.json"
             ds.write_text("[]")
             with patch("arcval.stt.benchmark.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "stt", "--eval-only", "--dataset", str(ds),
-                    "-o", tmp,
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "stt",
+                        "--eval-only",
+                        "--dataset",
+                        str(ds),
+                        "-o",
+                        tmp,
+                    ]
+                )
 
     def test_stt_defaults_skip_both_judges(self):
         captured = {}
@@ -244,6 +286,7 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_tts_no_provider_launches_ui(self):
         from arcval import cli
+
         with patch.object(cli, "_launch_ink_ui") as mock:
             mock.side_effect = SystemExit(0)
             with self.assertRaises(SystemExit):
@@ -253,16 +296,27 @@ class TestMainDispatch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             inp = Path(tmp) / "in.csv"
             import pandas as pd
+
             pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(str(inp), index=False)
             with patch("arcval.tts.benchmark.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "tts", "-p", "openai",
-                    "-i", str(inp), "-o", tmp,
-                    "-d", "--overwrite",
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "tts",
+                        "-p",
+                        "openai",
+                        "-i",
+                        str(inp),
+                        "-o",
+                        tmp,
+                        "-d",
+                        "--overwrite",
+                    ]
+                )
 
     def test_llm_no_config_launches_ui(self):
         from arcval import cli
+
         with patch.object(cli, "_launch_ink_ui") as mock:
             mock.side_effect = SystemExit(0)
             with self.assertRaises(SystemExit):
@@ -274,26 +328,39 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_llm_verify_with_url(self):
         from arcval import cli
+
         with patch.object(cli, "_run_agent_verify") as mock:
-            self._run_with_argv([
-                "arcval", "llm", "--verify",
-                "--agent-url", "http://x",
-            ])
+            self._run_with_argv(
+                [
+                    "arcval",
+                    "llm",
+                    "--verify",
+                    "--agent-url",
+                    "http://x",
+                ]
+            )
             mock.assert_called_once()
 
     def test_llm_eval_only_no_config_exits(self):
         with self.assertRaises(SystemExit):
-            self._run_with_argv(["arcval", "llm", "--eval-only", "--dataset", "/tmp/x.json"])
+            self._run_with_argv(
+                ["arcval", "llm", "--eval-only", "--dataset", "/tmp/x.json"]
+            )
 
     def test_llm_eval_only_no_dataset_exits(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
             cfg.write_text("{}")
             with self.assertRaises(SystemExit):
-                self._run_with_argv([
-                    "arcval", "llm", "--eval-only",
-                    "-c", str(cfg),
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "--eval-only",
+                        "-c",
+                        str(cfg),
+                    ]
+                )
 
     def test_llm_eval_only_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -302,53 +369,111 @@ class TestMainDispatch(unittest.TestCase):
             ds = Path(tmp) / "ds.json"
             ds.write_text("[]")
             with patch("arcval.llm.run_tests.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "llm", "--eval-only",
-                    "-c", str(cfg), "--dataset", str(ds),
-                    "-o", tmp,
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "--eval-only",
+                        "-c",
+                        str(cfg),
+                        "--dataset",
+                        str(ds),
+                        "-o",
+                        tmp,
+                    ]
+                )
 
     def test_llm_with_config_no_agent_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
-            cfg.write_text(json.dumps({"system_prompt": "sp", "tools": [], "test_cases": []}))
+            cfg.write_text(
+                json.dumps({"system_prompt": "sp", "tools": [], "test_cases": []})
+            )
             with patch("arcval.llm.benchmark.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "llm", "-c", str(cfg),
-                    "-o", tmp, "-m", "gpt-4.1",
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                        "-m",
+                        "gpt-4.1",
+                    ]
+                )
 
     def test_llm_with_config_agent_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
-            cfg.write_text(json.dumps({
-                "agent_url": "http://x", "agent_headers": None,
-                "test_cases": [],
-            }))
-            fake_verify = {"ok": True, "sample_output": {"response": "Hi", "tool_calls": []}}
-            with patch("arcval.connections.TextAgentConnection.verify",
-                       AsyncMock(return_value=fake_verify)), \
-                 patch("arcval.llm.tests_leaderboard.generate_leaderboard"), \
-                 patch("arcval.llm.tests.run",
-                       AsyncMock(return_value={"m1": {"metrics": {"passed": 1, "total": 1}}})):
-                self._run_with_argv([
-                    "arcval", "llm", "-c", str(cfg),
-                    "-o", tmp, "-m", "m1", "--skip-verify",
-                ])
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "agent_url": "http://x",
+                        "agent_headers": None,
+                        "test_cases": [],
+                    }
+                )
+            )
+            fake_verify = {
+                "ok": True,
+                "sample_output": {"response": "Hi", "tool_calls": []},
+            }
+            with (
+                patch(
+                    "arcval.connections.TextAgentConnection.verify",
+                    AsyncMock(return_value=fake_verify),
+                ),
+                patch("arcval.llm.tests_leaderboard.generate_leaderboard"),
+                patch(
+                    "arcval.llm.tests.run",
+                    AsyncMock(
+                        return_value={"m1": {"metrics": {"passed": 1, "total": 1}}}
+                    ),
+                ),
+            ):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                        "-m",
+                        "m1",
+                        "--skip-verify",
+                    ]
+                )
 
     def test_llm_with_config_agent_url_no_models(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
-            cfg.write_text(json.dumps({
-                "agent_url": "http://x", "test_cases": [],
-            }))
-            with patch("arcval.connections.TextAgentConnection.verify",
-                       AsyncMock(return_value={"ok": True, "sample_output": {}})), \
-                 patch("arcval.llm.tests.run", AsyncMock(return_value={})):
-                self._run_with_argv([
-                    "arcval", "llm", "-c", str(cfg),
-                    "-o", tmp,
-                ])
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "agent_url": "http://x",
+                        "test_cases": [],
+                    }
+                )
+            )
+            with (
+                patch(
+                    "arcval.connections.TextAgentConnection.verify",
+                    AsyncMock(return_value={"ok": True, "sample_output": {}}),
+                ),
+                patch("arcval.llm.tests.run", AsyncMock(return_value={})),
+            ):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                    ]
+                )
 
     def test_llm_eval_only_debug_forwards_flags(self):
         captured = {}
@@ -361,13 +486,23 @@ class TestMainDispatch(unittest.TestCase):
             cfg.write_text("{}")
             ds = Path(tmp) / "ds.json"
             ds.write_text("[]")
-            with patch("arcval.llm.run_tests.main",
-                       AsyncMock(side_effect=_capture)):
-                self._run_with_argv([
-                    "arcval", "llm", "--eval-only",
-                    "-c", str(cfg), "--dataset", str(ds), "-o", tmp,
-                    "-d", "-dc", "2",
-                ])
+            with patch("arcval.llm.run_tests.main", AsyncMock(side_effect=_capture)):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "--eval-only",
+                        "-c",
+                        str(cfg),
+                        "--dataset",
+                        str(ds),
+                        "-o",
+                        tmp,
+                        "-d",
+                        "-dc",
+                        "2",
+                    ]
+                )
         argv = captured["argv"]
         self.assertIn("-d", argv)
         self.assertIn("-dc", argv)
@@ -381,15 +516,25 @@ class TestMainDispatch(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
-            cfg.write_text(json.dumps(
-                {"system_prompt": "sp", "tools": [], "test_cases": []}
-            ))
-            with patch("arcval.llm.benchmark.main",
-                       AsyncMock(side_effect=_capture)):
-                self._run_with_argv([
-                    "arcval", "llm", "-c", str(cfg),
-                    "-o", tmp, "-m", "gpt-4.1", "-d", "-dc", "2",
-                ])
+            cfg.write_text(
+                json.dumps({"system_prompt": "sp", "tools": [], "test_cases": []})
+            )
+            with patch("arcval.llm.benchmark.main", AsyncMock(side_effect=_capture)):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                        "-m",
+                        "gpt-4.1",
+                        "-d",
+                        "-dc",
+                        "2",
+                    ]
+                )
         argv = captured["argv"]
         self.assertIn("-d", argv)
         self.assertIn("-dc", argv)
@@ -404,27 +549,51 @@ class TestMainDispatch(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "config.json"
-            cfg.write_text(json.dumps({
-                "agent_url": "http://x",
-                "test_cases": [
-                    {"id": str(i), "history": [], "evaluation": {"type": "tool_call"}}
-                    for i in range(4)
-                ],
-            }))
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "agent_url": "http://x",
+                        "test_cases": [
+                            {
+                                "id": str(i),
+                                "history": [],
+                                "evaluation": {"type": "tool_call"},
+                            }
+                            for i in range(4)
+                        ],
+                    }
+                )
+            )
             with patch("arcval.llm.tests.run", side_effect=fake_run):
-                self._run_with_argv([
-                    "arcval", "llm", "-c", str(cfg),
-                    "-o", tmp, "--skip-verify", "-d", "-dc", "1",
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "llm",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                        "--skip-verify",
+                        "-d",
+                        "-dc",
+                        "1",
+                    ]
+                )
         self.assertEqual(len(captured["test_cases"]), 1)
 
     def test_simulations_verify(self):
         from arcval import cli
+
         with patch.object(cli, "_run_agent_verify") as mock:
-            self._run_with_argv([
-                "arcval", "simulations", "--verify",
-                "--agent-url", "http://x",
-            ])
+            self._run_with_argv(
+                [
+                    "arcval",
+                    "simulations",
+                    "--verify",
+                    "--agent-url",
+                    "http://x",
+                ]
+            )
             mock.assert_called_once()
 
     def test_simulations_verify_no_url_exits(self):
@@ -433,6 +602,7 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_simulations_no_type_launches_ui(self):
         from arcval import cli
+
         with patch.object(cli, "_launch_ink_ui") as mock:
             mock.side_effect = SystemExit(0)
             with self.assertRaises(SystemExit):
@@ -443,10 +613,17 @@ class TestMainDispatch(unittest.TestCase):
             cfg = Path(tmp) / "cfg.json"
             cfg.write_text("{}")
             with self.assertRaises(SystemExit):
-                self._run_with_argv([
-                    "arcval", "simulations", "--type", "text",
-                    "-c", str(cfg), "--eval-only",
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "simulations",
+                        "--type",
+                        "text",
+                        "-c",
+                        str(cfg),
+                        "--eval-only",
+                    ]
+                )
 
     def test_simulations_text_eval_only_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -455,71 +632,131 @@ class TestMainDispatch(unittest.TestCase):
             ds = Path(tmp) / "ds.json"
             ds.write_text("[]")
             with patch("arcval.llm.run_simulation.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "simulations", "--type", "text",
-                    "-c", str(cfg), "--eval-only", "--dataset", str(ds),
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "simulations",
+                        "--type",
+                        "text",
+                        "-c",
+                        str(cfg),
+                        "--eval-only",
+                        "--dataset",
+                        str(ds),
+                    ]
+                )
 
     def test_simulations_text_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "cfg.json"
             cfg.write_text(json.dumps({}))
             with patch("arcval.llm.run_simulation.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "simulations", "--type", "text",
-                    "-c", str(cfg), "-o", tmp,
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "simulations",
+                        "--type",
+                        "text",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                    ]
+                )
 
     def test_simulations_text_with_agent_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "cfg.json"
             cfg.write_text(json.dumps({"agent_url": "http://x"}))
-            with patch("arcval.connections.TextAgentConnection.verify",
-                       AsyncMock(return_value={"ok": True, "sample_output": {}})), \
-                 patch("arcval.llm.run_simulation.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "simulations", "--type", "text",
-                    "-c", str(cfg), "-o", tmp,
-                ])
+            with (
+                patch(
+                    "arcval.connections.TextAgentConnection.verify",
+                    AsyncMock(return_value={"ok": True, "sample_output": {}}),
+                ),
+                patch("arcval.llm.run_simulation.main", AsyncMock(return_value=None)),
+            ):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "simulations",
+                        "--type",
+                        "text",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                    ]
+                )
 
     def test_simulations_text_with_agent_url_verify_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "cfg.json"
             cfg.write_text(json.dumps({"agent_url": "http://x"}))
-            with patch("arcval.connections.TextAgentConnection.verify",
-                       AsyncMock(return_value={"ok": False, "error": "boom"})):
+            with patch(
+                "arcval.connections.TextAgentConnection.verify",
+                AsyncMock(return_value={"ok": False, "error": "boom"}),
+            ):
                 with self.assertRaises(SystemExit):
-                    self._run_with_argv([
-                        "arcval", "simulations", "--type", "text",
-                        "-c", str(cfg), "-o", tmp,
-                    ])
+                    self._run_with_argv(
+                        [
+                            "arcval",
+                            "simulations",
+                            "--type",
+                            "text",
+                            "-c",
+                            str(cfg),
+                            "-o",
+                            tmp,
+                        ]
+                    )
 
     def test_simulations_leaderboard(self):
         with patch("arcval.llm.simulation_leaderboard.main") as mock:
-            self._run_with_argv([
-                "arcval", "simulations", "leaderboard",
-                "-o", "/tmp/out", "-s", "/tmp/save",
-            ])
+            self._run_with_argv(
+                [
+                    "arcval",
+                    "simulations",
+                    "leaderboard",
+                    "-o",
+                    "/tmp/out",
+                    "-s",
+                    "/tmp/save",
+                ]
+            )
             mock.assert_called_once()
 
     def test_simulations_voice_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = Path(tmp) / "cfg.json"
             cfg.write_text("{}")
-            with patch("arcval.agent.run_simulation.main", AsyncMock(return_value=None)):
-                self._run_with_argv([
-                    "arcval", "simulations", "--type", "voice",
-                    "-c", str(cfg), "-o", tmp,
-                ])
+            with patch(
+                "arcval.agent.run_simulation.main", AsyncMock(return_value=None)
+            ):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "simulations",
+                        "--type",
+                        "voice",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                    ]
+                )
 
     def test_status_default(self):
-        with patch("arcval.status.run_status_live",
-                   AsyncMock(return_value={"openai": {"status": "pass"}})):
+        with patch(
+            "arcval.status.run_status_live",
+            AsyncMock(return_value={"openai": {"status": "pass"}}),
+        ):
             self._run_with_argv(["arcval", "status"])
 
     def test_status_table(self):
-        with patch("arcval.status.run_status_live",
-                   AsyncMock(return_value={"openai": {"status": "pass"}})):
+        with patch(
+            "arcval.status.run_status_live",
+            AsyncMock(return_value={"openai": {"status": "pass"}}),
+        ):
             self._run_with_argv(["arcval", "status", "--table"])
 
     def test_agent_test_runs(self):
@@ -527,10 +764,17 @@ class TestMainDispatch(unittest.TestCase):
             cfg = Path(tmp) / "cfg.json"
             cfg.write_text("{}")
             with patch("runpy.run_path") as mock:
-                self._run_with_argv([
-                    "arcval", "agent", "test",
-                    "-c", str(cfg), "-o", tmp,
-                ])
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "agent",
+                        "test",
+                        "-c",
+                        str(cfg),
+                        "-o",
+                        tmp,
+                    ]
+                )
                 mock.assert_called_once()
 
 

@@ -36,6 +36,7 @@ def _fake_intent_entity(intent=1, entity=1.0):
 
 # --- load_audio -----------------------------------------------------------
 
+
 class TestLoadAudio(unittest.TestCase):
     def test_load_audio_bytes(self):
         from arcval.stt import eval as E
@@ -92,6 +93,7 @@ class TestLoadAudio(unittest.TestCase):
 
 
 # --- Provider transcribe_* missing-key paths ------------------------------
+
 
 class TestProviderAPIKeyMissing(unittest.IsolatedAsyncioTestCase):
     async def test_deepgram_missing_key(self):
@@ -160,6 +162,7 @@ class TestProviderAPIKeyMissing(unittest.IsolatedAsyncioTestCase):
 
 # --- transcribe_audio router ----------------------------------------------
 
+
 class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_provider_raises(self):
         from arcval.stt.eval import transcribe_audio
@@ -191,15 +194,18 @@ class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
         while hasattr(inner, "__wrapped__"):
             inner = inner.__wrapped__
         fake_lf = MagicMock()
-        with patch.object(E, "transcribe_deepgram", fake_fn), \
-             patch.object(E, "langfuse_enabled", True), \
-             patch.object(E, "langfuse", fake_lf), \
-             patch.object(E, "create_langfuse_audio_media", return_value=None):
+        with (
+            patch.object(E, "transcribe_deepgram", fake_fn),
+            patch.object(E, "langfuse_enabled", True),
+            patch.object(E, "langfuse", fake_lf),
+            patch.object(E, "create_langfuse_audio_media", return_value=None),
+        ):
             await inner(Path("/tmp/x.wav"), "ref", "deepgram", "english", "u")
         fake_lf.update_current_trace.assert_called_once()
 
 
 # --- validate_existing_results_csv ----------------------------------------
+
 
 class TestValidateExistingResultsCsv(unittest.TestCase):
     def test_nonexistent_returns_ok(self):
@@ -238,6 +244,7 @@ class TestValidateExistingResultsCsv(unittest.TestCase):
 
 
 # --- validate_stt_eval_only_dataset --------------------------------------
+
 
 class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
     def test_nonexistent(self):
@@ -295,21 +302,40 @@ class TestValidateSTTEvalOnlyDataset(unittest.TestCase):
 
 # --- _score_and_write_results --------------------------------------------
 
+
 class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
     async def test_writes_files(self):
         from arcval.stt import eval as E
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(E, "get_wer_score", return_value={"score": 0.1, "per_row": [0.1, 0.1]}), \
-                 patch.object(E, "get_cer_score", return_value={"score": 0.2, "per_row": [0.2, 0.2]}), \
-                 patch.object(E, "get_intent_entity_score", _fake_intent_entity()), \
-                 patch.object(E, "get_llm_judge_score", AsyncMock(return_value={
-                     "scores": {"semantic_match": {"type": "binary", "mean": 1.0}},
-                     "per_row": [
-                         {"semantic_match": {"match": True, "reasoning": "ok"}},
-                         {"semantic_match": {"match": True, "reasoning": "ok"}},
-                     ],
-                 })):
+            with (
+                patch.object(
+                    E,
+                    "get_wer_score",
+                    return_value={"score": 0.1, "per_row": [0.1, 0.1]},
+                ),
+                patch.object(
+                    E,
+                    "get_cer_score",
+                    return_value={"score": 0.2, "per_row": [0.2, 0.2]},
+                ),
+                patch.object(E, "get_intent_entity_score", _fake_intent_entity()),
+                patch.object(
+                    E,
+                    "get_llm_judge_score",
+                    AsyncMock(
+                        return_value={
+                            "scores": {
+                                "semantic_match": {"type": "binary", "mean": 1.0}
+                            },
+                            "per_row": [
+                                {"semantic_match": {"match": True, "reasoning": "ok"}},
+                                {"semantic_match": {"match": True, "reasoning": "ok"}},
+                            ],
+                        }
+                    ),
+                ),
+            ):
                 result = await E._score_and_write_results(
                     ids=["a", "b"],
                     gt_transcripts=["x", "y"],
@@ -323,6 +349,7 @@ class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((Path(tmp) / "metrics.json").exists())
 
             import pandas as _pd
+
             df = _pd.read_csv(Path(tmp) / "results.csv")
             self.assertIn("cer", df.columns)
             self.assertEqual(list(df["cer"]), [0.2, 0.2])
@@ -330,17 +357,42 @@ class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
     async def test_rating_evaluator(self):
         from arcval.stt import eval as E
 
-        rating_ev = {"name": "r", "system_prompt": "x", "judge_model": "m",
-                     "type": "rating", "scale_min": 1, "scale_max": 5}
+        rating_ev = {
+            "name": "r",
+            "system_prompt": "x",
+            "judge_model": "m",
+            "type": "rating",
+            "scale_min": 1,
+            "scale_max": 5,
+        }
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch.object(E, "get_wer_score", return_value={"score": 0.05, "per_row": [0.05]}), \
-             patch.object(E, "get_cer_score", return_value={"score": 0.03, "per_row": [0.03]}), \
-             patch.object(E, "get_intent_entity_score", _fake_intent_entity()), \
-             patch.object(E, "get_llm_judge_score", AsyncMock(return_value={
-                 "scores": {"r": {"type": "rating", "mean": 4.0, "scale_min": 1, "scale_max": 5}},
-                 "per_row": [{"r": {"score": 4, "reasoning": "ok"}}],
-             })):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(
+                E, "get_wer_score", return_value={"score": 0.05, "per_row": [0.05]}
+            ),
+            patch.object(
+                E, "get_cer_score", return_value={"score": 0.03, "per_row": [0.03]}
+            ),
+            patch.object(E, "get_intent_entity_score", _fake_intent_entity()),
+            patch.object(
+                E,
+                "get_llm_judge_score",
+                AsyncMock(
+                    return_value={
+                        "scores": {
+                            "r": {
+                                "type": "rating",
+                                "mean": 4.0,
+                                "scale_min": 1,
+                                "scale_max": 5,
+                            }
+                        },
+                        "per_row": [{"r": {"score": 4, "reasoning": "ok"}}],
+                    }
+                ),
+            ),
+        ):
             await E._score_and_write_results(
                 ids=["a"],
                 gt_transcripts=["x"],
@@ -352,6 +404,7 @@ class TestScoreAndWrite(unittest.IsolatedAsyncioTestCase):
 
 
 # --- run_eval_only --------------------------------------------------------
+
 
 class TestRunEvalOnly(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_dataset(self):
@@ -366,26 +419,49 @@ class TestRunEvalOnly(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             ds = Path(tmp) / "data.json"
-            ds.write_text(json.dumps([
-                {"id": "a", "gt": "x", "pred": "x"},
-                {"id": "b", "gt": "y", "pred": None},
-            ]))
+            ds.write_text(
+                json.dumps(
+                    [
+                        {"id": "a", "gt": "x", "pred": "x"},
+                        {"id": "b", "gt": "y", "pred": None},
+                    ]
+                )
+            )
             out = Path(tmp) / "out"
-            with patch.object(E, "get_wer_score", return_value={"score": 0.1, "per_row": [0.1, 0.1]}), \
-                 patch.object(E, "get_cer_score", return_value={"score": 0.2, "per_row": [0.2, 0.2]}), \
-                 patch.object(E, "get_intent_entity_score", _fake_intent_entity()), \
-                 patch.object(E, "get_llm_judge_score", AsyncMock(return_value={
-                     "scores": {"semantic_match": {"type": "binary", "mean": 1.0}},
-                     "per_row": [
-                         {"semantic_match": {"match": True, "reasoning": "ok"}},
-                         {"semantic_match": {"match": True, "reasoning": "ok"}},
-                     ],
-                 })):
+            with (
+                patch.object(
+                    E,
+                    "get_wer_score",
+                    return_value={"score": 0.1, "per_row": [0.1, 0.1]},
+                ),
+                patch.object(
+                    E,
+                    "get_cer_score",
+                    return_value={"score": 0.2, "per_row": [0.2, 0.2]},
+                ),
+                patch.object(E, "get_intent_entity_score", _fake_intent_entity()),
+                patch.object(
+                    E,
+                    "get_llm_judge_score",
+                    AsyncMock(
+                        return_value={
+                            "scores": {
+                                "semantic_match": {"type": "binary", "mean": 1.0}
+                            },
+                            "per_row": [
+                                {"semantic_match": {"match": True, "reasoning": "ok"}},
+                                {"semantic_match": {"match": True, "reasoning": "ok"}},
+                            ],
+                        }
+                    ),
+                ),
+            ):
                 result = await E.run_eval_only(str(ds), str(out))
         self.assertEqual(result["status"], "completed")
 
 
 # --- run_stt_eval ---------------------------------------------------------
+
 
 class TestRunStteval(unittest.IsolatedAsyncioTestCase):
     async def test_processes_new_and_skips_existing(self):
@@ -420,6 +496,7 @@ class TestRunStteval(unittest.IsolatedAsyncioTestCase):
 
 # --- run_single_provider_eval --------------------------------------------
 
+
 class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
     async def test_overwrite_path(self):
         from arcval.stt import eval as E
@@ -428,7 +505,9 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
             base = Path(tmp)
             (base / "audios").mkdir()
             (base / "audios" / "a.wav").write_bytes(b"\x00")
-            pd.DataFrame({"id": ["a"], "text": ["hello"]}).to_csv(base / "stt.csv", index=False)
+            pd.DataFrame({"id": ["a"], "text": ["hello"]}).to_csv(
+                base / "stt.csv", index=False
+            )
 
             output = Path(tmp) / "out"
             output.mkdir()
@@ -436,14 +515,30 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
             # Pre-existing results.csv to trigger overwrite path
             (output / "deepgram" / "results.csv").write_text("id,gt,pred\na,hello,hi\n")
 
-            with patch.object(E, "transcribe_audio", AsyncMock(return_value="hello")), \
-                 patch.object(E, "get_wer_score", return_value={"score": 0.0, "per_row": [0.0]}), \
-                 patch.object(E, "get_cer_score", return_value={"score": 0.0, "per_row": [0.0]}), \
-                 patch.object(E, "get_intent_entity_score", _fake_intent_entity()), \
-                 patch.object(E, "get_llm_judge_score", AsyncMock(return_value={
-                     "scores": {"semantic_match": {"type": "binary", "mean": 1.0}},
-                     "per_row": [{"semantic_match": {"match": True, "reasoning": "ok"}}],
-                 })):
+            with (
+                patch.object(E, "transcribe_audio", AsyncMock(return_value="hello")),
+                patch.object(
+                    E, "get_wer_score", return_value={"score": 0.0, "per_row": [0.0]}
+                ),
+                patch.object(
+                    E, "get_cer_score", return_value={"score": 0.0, "per_row": [0.0]}
+                ),
+                patch.object(E, "get_intent_entity_score", _fake_intent_entity()),
+                patch.object(
+                    E,
+                    "get_llm_judge_score",
+                    AsyncMock(
+                        return_value={
+                            "scores": {
+                                "semantic_match": {"type": "binary", "mean": 1.0}
+                            },
+                            "per_row": [
+                                {"semantic_match": {"match": True, "reasoning": "ok"}}
+                            ],
+                        }
+                    ),
+                ),
+            ):
                 result = await E.run_single_provider_eval(
                     provider="deepgram",
                     language="english",
@@ -464,7 +559,9 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
             base = Path(tmp)
             (base / "audios").mkdir()
             (base / "audios" / "a.wav").write_bytes(b"\x00")
-            pd.DataFrame({"id": ["a"], "text": ["hello"]}).to_csv(base / "stt.csv", index=False)
+            pd.DataFrame({"id": ["a"], "text": ["hello"]}).to_csv(
+                base / "stt.csv", index=False
+            )
 
             output = Path(tmp) / "out"
             output.mkdir()
@@ -498,14 +595,30 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
             output = Path(tmp) / "out"
             output.mkdir()
 
-            with patch.object(E, "transcribe_audio", AsyncMock(return_value="hello")), \
-                 patch.object(E, "get_wer_score", return_value={"score": 0.0, "per_row": [0.0]}), \
-                 patch.object(E, "get_cer_score", return_value={"score": 0.0, "per_row": [0.0]}), \
-                 patch.object(E, "get_intent_entity_score", _fake_intent_entity()), \
-                 patch.object(E, "get_llm_judge_score", AsyncMock(return_value={
-                     "scores": {"semantic_match": {"type": "binary", "mean": 1.0}},
-                     "per_row": [{"semantic_match": {"match": True, "reasoning": "ok"}}],
-                 })):
+            with (
+                patch.object(E, "transcribe_audio", AsyncMock(return_value="hello")),
+                patch.object(
+                    E, "get_wer_score", return_value={"score": 0.0, "per_row": [0.0]}
+                ),
+                patch.object(
+                    E, "get_cer_score", return_value={"score": 0.0, "per_row": [0.0]}
+                ),
+                patch.object(E, "get_intent_entity_score", _fake_intent_entity()),
+                patch.object(
+                    E,
+                    "get_llm_judge_score",
+                    AsyncMock(
+                        return_value={
+                            "scores": {
+                                "semantic_match": {"type": "binary", "mean": 1.0}
+                            },
+                            "per_row": [
+                                {"semantic_match": {"match": True, "reasoning": "ok"}}
+                            ],
+                        }
+                    ),
+                ),
+            ):
                 result = await E.run_single_provider_eval(
                     provider="deepgram",
                     language="english",
@@ -521,6 +634,7 @@ class TestRunSingleProviderEval(unittest.IsolatedAsyncioTestCase):
 
 
 # --- main CLI -------------------------------------------------------------
+
 
 class TestSTTMain(unittest.IsolatedAsyncioTestCase):
     async def test_main_invalid_provider(self):
@@ -547,14 +661,26 @@ class TestSTTMain(unittest.IsolatedAsyncioTestCase):
             base = Path(tmp)
             (base / "audios").mkdir()
             (base / "audios" / "a.wav").write_bytes(b"\x00")
-            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(base / "stt.csv", index=False)
+            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
+                base / "stt.csv", index=False
+            )
             output = Path(tmp) / "out"
 
             argv = ["e.py", "-p", "deepgram", "-i", str(base), "-o", str(output)]
-            fake_result = {"provider": "deepgram", "status": "completed",
-                           "metrics": {"wer": 0.1, "semantic_match": {"type": "binary", "mean": 0.9}}}
-            with patch.object(sys, "argv", argv), \
-                 patch.object(E, "run_single_provider_eval", AsyncMock(return_value=fake_result)):
+            fake_result = {
+                "provider": "deepgram",
+                "status": "completed",
+                "metrics": {
+                    "wer": 0.1,
+                    "semantic_match": {"type": "binary", "mean": 0.9},
+                },
+            }
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(
+                    E, "run_single_provider_eval", AsyncMock(return_value=fake_result)
+                ),
+            ):
                 await E.main()
 
     async def test_main_error_status(self):
@@ -564,13 +690,19 @@ class TestSTTMain(unittest.IsolatedAsyncioTestCase):
             base = Path(tmp)
             (base / "audios").mkdir()
             (base / "audios" / "a.wav").write_bytes(b"\x00")
-            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(base / "stt.csv", index=False)
+            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
+                base / "stt.csv", index=False
+            )
             output = Path(tmp) / "out"
 
             argv = ["e.py", "-p", "deepgram", "-i", str(base), "-o", str(output)]
             fake_result = {"provider": "deepgram", "status": "error", "error": "fail"}
-            with patch.object(sys, "argv", argv), \
-                 patch.object(E, "run_single_provider_eval", AsyncMock(return_value=fake_result)):
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(
+                    E, "run_single_provider_eval", AsyncMock(return_value=fake_result)
+                ),
+            ):
                 with self.assertRaises(SystemExit):
                     await E.main()
 

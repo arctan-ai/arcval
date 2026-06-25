@@ -272,8 +272,12 @@ class TestRunGeneralEval(unittest.IsolatedAsyncioTestCase):
 
     async def test_arguments_list_passed_to_judge(self):
         rows = [
-            {"id": "row_a", "input": "doc A", "output": "sum A",
-             "arguments": {"faithful": {"name": "Ann"}}},
+            {
+                "id": "row_a",
+                "input": "doc A",
+                "output": "sum A",
+                "arguments": {"faithful": {"name": "Ann"}},
+            },
             {"id": "row_b", "input": "doc B", "output": "sum B"},
         ]
         dataset_path = _write_json(rows)
@@ -289,9 +293,7 @@ class TestRunGeneralEval(unittest.IsolatedAsyncioTestCase):
         judge_mock = AsyncMock(return_value=fake_score)
         try:
             with tempfile.TemporaryDirectory() as out_dir:
-                with patch(
-                    "arcval.general.eval.get_general_judge_score", judge_mock
-                ):
+                with patch("arcval.general.eval.get_general_judge_score", judge_mock):
                     result = await run_general_eval(
                         dataset_path=dataset_path,
                         output_dir=out_dir,
@@ -330,9 +332,7 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
     async def test_config_bad_json_exits(self):
         with tempfile.TemporaryDirectory() as out_dir:
             ds = _write_json([{"id": "1", "input": "a", "output": "b"}])
-            bad = tempfile.NamedTemporaryFile(
-                mode="w", delete=False, suffix=".json"
-            )
+            bad = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json")
             bad.write("{not valid json")
             bad.close()
             try:
@@ -362,9 +362,12 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
             ds = _write_json([{"id": "1", "input": "a", "output": "b"}])
             cfg = _write_json({"evaluators": [BINARY_EV]})
             try:
-                with patch.object(sys, "argv", self._argv(ds, cfg, out_dir)), patch(
-                    "arcval.general.eval.run_general_eval",
-                    AsyncMock(return_value={"status": "error", "error": "boom"}),
+                with (
+                    patch.object(sys, "argv", self._argv(ds, cfg, out_dir)),
+                    patch(
+                        "arcval.general.eval.run_general_eval",
+                        AsyncMock(return_value={"status": "error", "error": "boom"}),
+                    ),
                 ):
                     with self.assertRaises(SystemExit) as cm:
                         await eval_main()
@@ -384,8 +387,9 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
             }
             run_mock = AsyncMock(return_value=completed)
             try:
-                with patch.object(sys, "argv", self._argv(ds, cfg, out_dir)), patch(
-                    "arcval.general.eval.run_general_eval", run_mock
+                with (
+                    patch.object(sys, "argv", self._argv(ds, cfg, out_dir)),
+                    patch("arcval.general.eval.run_general_eval", run_mock),
                 ):
                     # Should not raise SystemExit on success
                     await eval_main()
@@ -404,9 +408,12 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
             # metrics with no type-bearing dicts → the "(no scores)" branch
             completed = {"status": "completed", "metrics": {}, "output_dir": out_dir}
             try:
-                with patch.object(sys, "argv", self._argv(ds, cfg, out_dir)), patch(
-                    "arcval.general.eval.run_general_eval",
-                    AsyncMock(return_value=completed),
+                with (
+                    patch.object(sys, "argv", self._argv(ds, cfg, out_dir)),
+                    patch(
+                        "arcval.general.eval.run_general_eval",
+                        AsyncMock(return_value=completed),
+                    ),
                 ):
                     await eval_main()  # should not raise
             finally:
@@ -426,8 +433,9 @@ class TestCliDispatch(unittest.TestCase):
 
         eval_main_mock = AsyncMock(return_value=None)
         argv = ["arcval", "general", "--dataset", "d.json", "-c", "c.json"]
-        with patch.object(sys, "argv", argv), patch(
-            "arcval.general.eval.main", eval_main_mock
+        with (
+            patch.object(sys, "argv", argv),
+            patch("arcval.general.eval.main", eval_main_mock),
         ):
             cli.main()
         eval_main_mock.assert_awaited_once()
