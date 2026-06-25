@@ -2217,8 +2217,8 @@ function EvalApp({
     overwrite: false,
     envVars: {},
     arcval: { cmd: "arcval", args: [] },
-    skipLlmJudge: false,
-    skipIntentEntity: false,
+    skipLlmJudge: true,
+    skipIntentEntity: true,
   });
   const [initError, setInitError] = useState("");
 

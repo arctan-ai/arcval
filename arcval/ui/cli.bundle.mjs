@@ -51433,8 +51433,8 @@ function EvalApp({
     overwrite: false,
     envVars: {},
     arcval: { cmd: "arcval", args: [] },
-    skipLlmJudge: false,
-    skipIntentEntity: false
+    skipLlmJudge: true,
+    skipIntentEntity: true
   });
   const [initError, setInitError] = (0, import_react25.useState)("");
   (0, import_react25.useEffect)(() => {

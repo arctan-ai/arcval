@@ -1349,10 +1349,19 @@ async def main():
         action="store_true",
         help="Overwrite existing results instead of resuming from last checkpoint",
     )
-    parser.add_argument(
+    _eval_llm_group = parser.add_mutually_exclusive_group()
+    _eval_llm_group.add_argument(
         "--skip-llm-judge",
         action="store_true",
+        dest="skip_llm_judge",
+        default=None,
         help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
+    _eval_llm_group.add_argument(
+        "--no-skip-llm-judge",
+        action="store_false",
+        dest="skip_llm_judge",
+        help="Run the LLM judge evaluation",
     )
     _eval_ie_group = parser.add_mutually_exclusive_group()
     _eval_ie_group.add_argument(
@@ -1371,8 +1380,10 @@ async def main():
 
     args = parser.parse_args()
 
+    if args.skip_llm_judge is None:
+        setattr(args, "skip_llm_judge", True)
     if args.skip_intent_entity is None:
-        setattr(args, "skip_intent_entity", False)
+        setattr(args, "skip_intent_entity", True)
 
     provider = args.provider
 

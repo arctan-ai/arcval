@@ -244,10 +244,19 @@ async def main():
         default=None,
         help="Path to optional JSON config file with an `evaluators` list",
     )
-    parser.add_argument(
+    _bm_llm_group = parser.add_mutually_exclusive_group()
+    _bm_llm_group.add_argument(
         "--skip-llm-judge",
         action="store_true",
+        dest="skip_llm_judge",
+        default=None,
         help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
+    _bm_llm_group.add_argument(
+        "--no-skip-llm-judge",
+        action="store_false",
+        dest="skip_llm_judge",
+        help="Run the LLM judge evaluation",
     )
     _bm_ie_group = parser.add_mutually_exclusive_group()
     _bm_ie_group.add_argument(
@@ -266,8 +275,10 @@ async def main():
 
     args = parser.parse_args()
 
+    if args.skip_llm_judge is None:
+        setattr(args, "skip_llm_judge", True)
     if args.skip_intent_entity is None:
-        setattr(args, "skip_intent_entity", False)
+        setattr(args, "skip_intent_entity", True)
 
     providers = args.provider
 

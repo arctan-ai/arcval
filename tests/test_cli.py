@@ -120,6 +120,41 @@ def _is_test_request(body: dict) -> bool:
     )
 
 
+class TestSlackLeaderboardUpload:
+    def test_uploads_xlsx_instead_of_sending_plain_message(self, tmp_path, monkeypatch):
+        from arcval import cli
+
+        leaderboard_dir = tmp_path / "leaderboard"
+        leaderboard_dir.mkdir()
+        (leaderboard_dir / "stt_leaderboard.xlsx").write_bytes(b"xlsx")
+
+        uploaded = {}
+
+        def _fake_upload(file_path, initial_comment, title=None, token=None, channel=None):
+            uploaded["file_path"] = file_path
+            uploaded["initial_comment"] = initial_comment
+
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C123")
+        monkeypatch.setattr("arcval.slack.upload_file", _fake_upload)
+
+        assert cli._upload_slack_leaderboard(str(tmp_path), "done") is True
+        assert uploaded["file_path"].endswith("stt_leaderboard.xlsx")
+        assert uploaded["initial_comment"] == "done"
+
+    def test_returns_false_without_upload_credentials(self, tmp_path, monkeypatch):
+        from arcval import cli
+
+        leaderboard_dir = tmp_path / "leaderboard"
+        leaderboard_dir.mkdir()
+        (leaderboard_dir / "stt_leaderboard.xlsx").write_bytes(b"xlsx")
+
+        monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
+        monkeypatch.delenv("SLACK_CHANNEL_ID", raising=False)
+
+        assert cli._upload_slack_leaderboard(str(tmp_path), "done") is False
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
