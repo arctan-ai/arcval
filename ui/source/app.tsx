@@ -32,7 +32,7 @@ import { SimulationsApp } from "./sim-app.js";
 // ─── Types ───────────────────────────────────────────────────
 export type Mode = AppMode;
 
-type EvalMode = "tts" | "stt";
+type EvalMode = "tts" | "stt" | "arctan-eval";
 
 interface EvalConfig {
   mode: EvalMode;
@@ -71,11 +71,49 @@ interface ProviderState {
 // ─── Helpers ─────────────────────────────────────────────────
 
 function getModeLabel(mode: EvalMode): string {
-  return mode === "tts" ? "TTS" : "STT";
+  if (mode === "tts") return "TTS";
+  if (mode === "arctan-eval") return "Arctan Eval";
+  return "STT";
 }
 
 function getAllProviders(mode: EvalMode) {
   return mode === "tts" ? TTS_PROVIDERS : STT_PROVIDERS;
+}
+
+function getProviderMode(mode: EvalMode): "tts" | "stt" {
+  return mode === "tts" ? "tts" : "stt";
+}
+
+function isSttLikeMode(mode: EvalMode): boolean {
+  return mode !== "tts";
+}
+
+function getLeaderboardFilename(mode: EvalMode): string {
+  if (mode === "tts") return "tts_leaderboard.xlsx";
+  if (mode === "arctan-eval") return "arctan_eval_leaderboard.xlsx";
+  return "stt_leaderboard.xlsx";
+}
+
+function getProviderMetricsPath(
+  outputDir: string,
+  provider: string,
+  mode: EvalMode
+): string {
+  if (mode === "arctan-eval") {
+    return path.join(outputDir, "baseline", provider, "metrics.json");
+  }
+  return path.join(outputDir, provider, "metrics.json");
+}
+
+function getProviderResultsPath(
+  outputDir: string,
+  provider: string,
+  mode: EvalMode
+): string {
+  if (mode === "arctan-eval") {
+    return path.join(outputDir, "baseline", provider, "results.csv");
+  }
+  return path.join(outputDir, provider, "results.csv");
 }
 
 // Reserved metrics.json keys that look numeric but are not evaluator-
@@ -265,7 +303,7 @@ function ProviderSelectStep({
 }) {
   const allProviders = getAllProviders(mode);
   const availableProviders = useMemo(
-    () => getProvidersForLanguage(language, mode),
+    () => getProvidersForLanguage(language, getProviderMode(mode)),
     [language, mode]
   );
 
@@ -508,10 +546,12 @@ function ConfigInputStep({
 // Step 4: Output directory
 // ═════════════════════════════════════════════════════════════
 function ConfigOutputStep({
+  mode,
   providers,
   onComplete,
   onBack,
 }: {
+  mode: EvalMode;
   providers: string[];
   onComplete: (dir: string, overwrite: boolean) => void;
   onBack: () => void;
@@ -531,16 +571,25 @@ function ConfigOutputStep({
   const checkExistingOutput = (outputDir: string): string[] => {
     const existing: string[] = [];
     for (const provider of providers) {
-      const providerDir = path.join(outputDir, provider);
-      if (fs.existsSync(providerDir)) {
-        try {
-          const contents = fs.readdirSync(providerDir);
-          if (contents.length > 0) {
-            existing.push(provider);
-          }
-        } catch {
-          // Ignore read errors
+      const providerDirs =
+        mode === "arctan-eval"
+          ? [
+              path.join(outputDir, "baseline", provider),
+              path.join(outputDir, "arctan", provider),
+            ]
+          : [path.join(outputDir, provider)];
+      const hasExisting = providerDirs.some((providerDir) => {
+        if (!fs.existsSync(providerDir)) {
+          return false;
         }
+        try {
+          return fs.readdirSync(providerDir).length > 0;
+        } catch {
+          return false;
+        }
+      });
+      if (hasExisting) {
+        existing.push(provider);
       }
     }
     return existing;
@@ -850,7 +899,7 @@ function KeySetupStep({
     seen.add("OPENAI_API_KEY");
 
     for (const id of selectedProviders) {
-      const p = getProviderById(id, mode);
+      const p = getProviderById(id, getProviderMode(mode));
       if (p && !seen.has(p.envVar)) {
         result.push({
           envVar: p.envVar,
@@ -1045,8 +1094,8 @@ function RunStep({
     } else {
       args.push("--no-skip-intent-entity");
     }
-    // Generate leaderboard after the last provider eval
-    if (isLastProvider) {
+    // The Arctan comparison command generates its own leaderboard.
+    if (isLastProvider && config.mode !== "arctan-eval") {
       args.push("--leaderboard");
     }
     return args;
@@ -1117,10 +1166,10 @@ function RunStep({
       let metrics: ProviderState["metrics"] = undefined;
       if (code === 0) {
         try {
-          const metricsPath = path.join(
+          const metricsPath = getProviderMetricsPath(
             config.outputDir,
             provider,
-            "metrics.json"
+            config.mode
           );
           const raw = JSON.parse(fs.readFileSync(metricsPath, "utf-8"));
           const evaluatorScores = evaluatorScoresFromMetrics(raw);
@@ -1128,6 +1177,21 @@ function RunStep({
             metrics = {
               ...evaluatorScores,
               ttfb: raw.ttfb?.mean ?? raw.ttfb ?? 0,
+            };
+          } else if (config.mode === "arctan-eval") {
+            const arctanMetricsPath = path.join(
+              config.outputDir,
+              "arctan",
+              provider,
+              "metrics.json"
+            );
+            const arctanRaw = JSON.parse(
+              fs.readFileSync(arctanMetricsPath, "utf-8")
+            );
+            metrics = {
+              baseline_wer: raw.wer ?? 0,
+              arctan_wer: arctanRaw.wer ?? 0,
+              wer_delta: (arctanRaw.wer ?? 0) - (raw.wer ?? 0),
             };
           } else {
             metrics = {
@@ -1210,6 +1274,16 @@ function RunStep({
       }
       if (typeof m.ttfb === "number") {
         parts.push(`ttfb: ${m.ttfb.toFixed(2)}s`);
+      }
+    } else if (config.mode === "arctan-eval") {
+      if (typeof m.baseline_wer === "number") {
+        parts.push(`base wer: ${m.baseline_wer.toFixed(2)}`);
+      }
+      if (typeof m.arctan_wer === "number") {
+        parts.push(`arctan wer: ${m.arctan_wer.toFixed(2)}`);
+      }
+      if (typeof m.wer_delta === "number") {
+        parts.push(`delta: ${m.wer_delta.toFixed(2)}`);
       }
     } else {
       if (typeof m.wer === "number") {
@@ -1347,16 +1421,16 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
     const results: typeof metrics = [];
     for (const provider of config.providers) {
       try {
-        const metricsPath = path.join(
+        const metricsPath = getProviderMetricsPath(
           config.outputDir,
           provider,
-          "metrics.json"
+          config.mode
         );
         const data = JSON.parse(fs.readFileSync(metricsPath, "utf-8"));
-        const resultsPath = path.join(
+        const resultsPath = getProviderResultsPath(
           config.outputDir,
           provider,
-          "results.csv"
+          config.mode
         );
         let count = 0;
         try {
@@ -1374,6 +1448,23 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
             ttfb: data.ttfb?.mean ?? data.ttfb ?? 0,
             count,
           });
+        } else if (config.mode === "arctan-eval") {
+          const arctanMetricsPath = path.join(
+            config.outputDir,
+            "arctan",
+            provider,
+            "metrics.json"
+          );
+          const arctanData = JSON.parse(
+            fs.readFileSync(arctanMetricsPath, "utf-8")
+          );
+          results.push({
+            provider,
+            baseline_wer: data.wer ?? 0,
+            arctan_wer: arctanData.wer ?? 0,
+            wer_delta: (arctanData.wer ?? 0) - (data.wer ?? 0),
+            count,
+          });
         } else {
           results.push({
             provider,
@@ -1387,7 +1478,7 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
       }
     }
     setMetrics(results);
-  }, []);
+  }, [config.mode, config.outputDir, config.providers]);
 
   // Parse CSV line handling quoted fields with commas
   const parseCSVLine = (line: string): string[] => {
@@ -1419,11 +1510,63 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
   // Load provider results when selected
   useEffect(() => {
     if (!selectedProvider) return;
+    if (config.mode === "arctan-eval") {
+      try {
+        const baselinePath = path.join(
+          config.outputDir,
+          "baseline",
+          selectedProvider,
+          "results.csv"
+        );
+        const arctanPath = path.join(
+          config.outputDir,
+          "arctan",
+          selectedProvider,
+          "results.csv"
+        );
+        const parseResults = (csvPath: string) => {
+          const csvContent = fs.readFileSync(csvPath, "utf-8");
+          const lines = csvContent.trim().split("\n");
+          if (lines.length < 2) {
+            return [];
+          }
+          const headers = parseCSVLine(lines[0]!);
+          return lines.slice(1).map((line) => {
+            const values = parseCSVLine(line);
+            const row: Record<string, string> = {};
+            headers.forEach((h, idx) => {
+              row[h] = values[idx] || "";
+            });
+            return row;
+          });
+        };
+        const baselineRows = parseResults(baselinePath);
+        const arctanRows = parseResults(arctanPath);
+        const arctanById = new Map(arctanRows.map((row) => [row.id, row]));
+        const merged: ProviderResult[] = baselineRows.map((row) => {
+          const arctanRow = arctanById.get(row.id) || {};
+          return {
+            id: row.id || "",
+            gt: row.gt || "",
+            baseline_pred: row.pred || "",
+            arctan_pred: arctanRow.pred || "",
+          };
+        });
+        setProviderResults(merged);
+        setScrollOffset(0);
+        setSelectedRowIdx(0);
+        setExpandedRows(new Set());
+      } catch {
+        setProviderResults([]);
+      }
+      setEvaluatorMeta({});
+      return;
+    }
     try {
-      const resultsPath = path.join(
+      const resultsPath = getProviderResultsPath(
         config.outputDir,
         selectedProvider,
-        "results.csv"
+        config.mode
       );
       const csvContent = fs.readFileSync(resultsPath, "utf-8");
       const lines = csvContent.trim().split("\n");
@@ -1469,17 +1612,17 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
     }
 
     try {
-      const metricsPath = path.join(
+      const metricsPath = getProviderMetricsPath(
         config.outputDir,
         selectedProvider,
-        "metrics.json"
+        config.mode
       );
       const data = JSON.parse(fs.readFileSync(metricsPath, "utf-8"));
       setEvaluatorMeta(evaluatorMetaFromMetrics(data));
     } catch {
       setEvaluatorMeta({});
     }
-  }, [selectedProvider, config.outputDir]);
+  }, [selectedProvider, config.outputDir, config.mode]);
 
   // Play audio file for a given row ID
   const playAudio = (rowId: string) => {
@@ -1645,8 +1788,7 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
 
   const leaderboardDir = path.join(config.outputDir, "leaderboard");
   const resolvedOutputDir = path.resolve(config.outputDir);
-  const leaderboardFile =
-    config.mode === "tts" ? "tts_leaderboard.xlsx" : "stt_leaderboard.xlsx";
+  const leaderboardFile = getLeaderboardFilename(config.mode);
 
   // Provider Detail View
   if (view === "provider-detail" && selectedProvider) {
@@ -1756,6 +1898,21 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
                   );
                 })}
               </Box>
+            ) : config.mode === "arctan-eval" ? (
+              <Table
+                columns={[
+                  { key: "id", label: "ID", width: 10 },
+                  { key: "gt", label: "Ground Truth", width: 22 },
+                  { key: "baseline_pred", label: "Baseline", width: 22 },
+                  { key: "arctan_pred", label: "Arctan", width: 22 },
+                ]}
+                data={visibleRows.map((r) => ({
+                  id: truncate(String(r.id || ""), 10),
+                  gt: truncate(String(r.gt || ""), 22),
+                  baseline_pred: truncate(String(r.baseline_pred || ""), 22),
+                  arctan_pred: truncate(String(r.arctan_pred || ""), 22),
+                }))}
+              />
             ) : (
               <Table
                 columns={[
@@ -1800,7 +1957,9 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
                   of {providerResults.length}
                   {config.mode === "tts"
                     ? " | ↑↓ navigate, Enter/p play, s stop"
-                    : " | ↑↓ navigate, Enter to expand/collapse"}
+                    : config.mode === "arctan-eval"
+                      ? ""
+                      : " | ↑↓ navigate, Enter to expand/collapse"}
                 </Text>
               </Box>
             )}
@@ -1871,7 +2030,7 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
 
             {/* Per-row details for STT — full GT/Pred always shown,
                 evaluator reasoning toggled with Enter on the selected row. */}
-            {config.mode !== "tts" && (
+            {config.mode !== "tts" && config.mode !== "arctan-eval" && (
               <Box marginTop={1} flexDirection="column">
                 <Text bold dimColor>
                   Row Details:
@@ -1968,7 +2127,9 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
           <Text dimColor>
             {config.mode === "tts"
               ? "q/Esc back | ↑↓ navigate | Enter/p play | s stop"
-              : "q/Esc back | ↑↓ navigate | Enter to expand/collapse"}
+              : config.mode === "arctan-eval"
+                ? "q/Esc back"
+                : "q/Esc back | ↑↓ navigate | Enter to expand/collapse"}
           </Text>
         </Box>
       </Box>
@@ -2014,6 +2175,30 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
               ...evaluatorCells(m),
               ttfb:
                 typeof m.ttfb === "number" ? m.ttfb.toFixed(2) + "s" : "-",
+              count: String(m.count),
+            }))}
+          />
+        ) : config.mode === "arctan-eval" ? (
+          <Table
+            columns={[
+              { key: "provider", label: "Provider", width: 14 },
+              { key: "baseline_wer", label: "Base WER", width: 10, align: "right" },
+              { key: "arctan_wer", label: "Arctan WER", width: 12, align: "right" },
+              { key: "wer_delta", label: "Delta", width: 8, align: "right" },
+              { key: "count", label: "Count", width: 6, align: "right" },
+            ]}
+            data={metrics.map((m) => ({
+              provider: m.provider as string,
+              baseline_wer:
+                typeof m.baseline_wer === "number"
+                  ? m.baseline_wer.toFixed(2)
+                  : "-",
+              arctan_wer:
+                typeof m.arctan_wer === "number"
+                  ? m.arctan_wer.toFixed(2)
+                  : "-",
+              wer_delta:
+                typeof m.wer_delta === "number" ? m.wer_delta.toFixed(2) : "-",
               count: String(m.count),
             }))}
           />
@@ -2071,6 +2256,22 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
               />
             </Box>
           </>
+        ) : config.mode === "arctan-eval" ? (
+          <Box marginTop={1} flexDirection="column">
+            <Box>
+              <Text bold>WER Delta </Text>
+              <Text dimColor>(arctan - baseline; lower is better)</Text>
+            </Box>
+            <BarChart
+              data={[...metrics]
+                .sort((a, b) => (a.wer_delta as number) - (b.wer_delta as number))
+                .map((m) => ({
+                  label: m.provider as string,
+                  value: m.wer_delta as number,
+                  color: "yellow",
+                }))}
+            />
+          </Box>
         ) : (
           <>
             {/* WER bar chart */}
@@ -2135,12 +2336,29 @@ function LeaderboardStep({ config }: { config: EvalConfig }) {
               </Text>
             </Box>
           ) : null}
-          <Box>
-            <Text>{"  Results:     "}</Text>
-            <Text color="cyan">
-              {resolvedOutputDir}/{"<provider>"}/results.csv
-            </Text>
-          </Box>
+          {config.mode === "arctan-eval" ? (
+            <>
+              <Box>
+                <Text>{"  Baseline:    "}</Text>
+                <Text color="cyan">
+                  {resolvedOutputDir}/baseline/{"<provider>"}/results.csv
+                </Text>
+              </Box>
+              <Box>
+                <Text>{"  Arctan:      "}</Text>
+                <Text color="cyan">
+                  {resolvedOutputDir}/arctan/{"<provider>"}/results.csv
+                </Text>
+              </Box>
+            </>
+          ) : (
+            <Box>
+              <Text>{"  Results:     "}</Text>
+              <Text color="cyan">
+                {resolvedOutputDir}/{"<provider>"}/results.csv
+              </Text>
+            </Box>
+          )}
           <Box>
             <Text>{"  Leaderboard: "}</Text>
             <Text color="cyan">
@@ -2171,6 +2389,10 @@ function MainMenu({ onSelect }: { onSelect: (mode: AppMode) => void }) {
       </Box>
       <SelectInput
         items={[
+          {
+            label: "Arctan Eval           Compare baseline vs isolated STT",
+            value: "arctan-eval",
+          },
           {
             label: "STT Evaluation        Benchmark speech-to-text providers",
             value: "stt",
@@ -2296,6 +2518,7 @@ function EvalApp({
     case "config-output":
       return (
         <ConfigOutputStep
+          mode={config.mode}
           providers={config.providers}
           onComplete={(dir, overwrite) => {
             setConfig((c) => ({ ...c, outputDir: dir, overwrite }));
@@ -2311,7 +2534,11 @@ function EvalApp({
           mode={config.mode}
           onComplete={(configFile) => {
             setConfig((c) => ({ ...c, configFile }));
-            setStep(config.mode === "stt" ? "config-skip-intent-entity" : "setup-keys");
+            setStep(
+              isSttLikeMode(config.mode)
+                ? "config-skip-intent-entity"
+                : "setup-keys"
+            );
           }}
           onBack={() => setStep("config-output")}
         />
@@ -2380,6 +2607,14 @@ export function App({ mode }: { mode: Mode }) {
       return (
         <EvalApp
           evalMode="stt"
+          onBack={mode === "menu" ? goToMenu : undefined}
+        />
+      );
+
+    case "arctan-eval":
+      return (
+        <EvalApp
+          evalMode="arctan-eval"
           onBack={mode === "menu" ? goToMenu : undefined}
         />
       );

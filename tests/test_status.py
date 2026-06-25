@@ -15,7 +15,9 @@ def _mk_resp(body=None, status=200, content=b"audio_data" * 50):
     m.raise_for_status = MagicMock()
     if status >= 400:
         m.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "fail", request=MagicMock(), response=m,
+            "fail",
+            request=MagicMock(),
+            response=m,
         )
     if body is not None:
         m.json = MagicMock(return_value=body)
@@ -99,7 +101,9 @@ class TestCheckProviders(unittest.IsolatedAsyncioTestCase):
         from arcval.status import _check_google
 
         client = _mk_client()
-        with patch.dict(os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": "/nonexistent.json"}):
+        with patch.dict(
+            os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": "/nonexistent.json"}
+        ):
             with self.assertRaises(FileNotFoundError):
                 await _check_google(client)
 
@@ -110,9 +114,9 @@ class TestCheckProviders(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             creds = Path(tmp) / "creds.json"
             creds.write_text("{}")
-            with patch.dict(os.environ,
-                            {"GOOGLE_APPLICATION_CREDENTIALS": str(creds)},
-                            clear=True):
+            with patch.dict(
+                os.environ, {"GOOGLE_APPLICATION_CREDENTIALS": str(creds)}, clear=True
+            ):
                 with self.assertRaises(ValueError):
                     await _check_google(client)
 
@@ -171,8 +175,10 @@ class TestCheckSingleProvider(unittest.IsolatedAsyncioTestCase):
         from arcval import status as S
 
         provider = {"name": "openai", "types": ["llm"], "env_vars": ["OPENAI_API_KEY"]}
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "k"}), \
-             patch.dict(S._CHECK_FUNCTIONS, {"openai": AsyncMock(return_value="llm")}):
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "k"}),
+            patch.dict(S._CHECK_FUNCTIONS, {"openai": AsyncMock(return_value="llm")}),
+        ):
             result = await S._check_single_provider(provider, MagicMock())
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["check_type"], "llm")
@@ -186,9 +192,11 @@ class TestCheckSingleProvider(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(100)
             return "llm"
 
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "k"}), \
-             patch.dict(S._CHECK_FUNCTIONS, {"openai": slow}), \
-             patch("asyncio.wait_for", AsyncMock(side_effect=asyncio.TimeoutError())):
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "k"}),
+            patch.dict(S._CHECK_FUNCTIONS, {"openai": slow}),
+            patch("asyncio.wait_for", AsyncMock(side_effect=asyncio.TimeoutError())),
+        ):
             result = await S._check_single_provider(provider, MagicMock())
         self.assertEqual(result["status"], "fail")
         self.assertIn("Timed out", result["error"])
@@ -203,8 +211,10 @@ class TestCheckSingleProvider(unittest.IsolatedAsyncioTestCase):
             resp.status_code = 401
             raise httpx.HTTPStatusError("auth fail", request=MagicMock(), response=resp)
 
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "k"}), \
-             patch.dict(S._CHECK_FUNCTIONS, {"openai": fails}):
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "k"}),
+            patch.dict(S._CHECK_FUNCTIONS, {"openai": fails}),
+        ):
             result = await S._check_single_provider(provider, MagicMock())
         self.assertEqual(result["status"], "fail")
         self.assertIn("HTTP 401", result["error"])
@@ -217,8 +227,10 @@ class TestCheckSingleProvider(unittest.IsolatedAsyncioTestCase):
         async def fails(*a, **kw):
             raise RuntimeError("x" * 200)  # long error message
 
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "k"}), \
-             patch.dict(S._CHECK_FUNCTIONS, {"openai": fails}):
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "k"}),
+            patch.dict(S._CHECK_FUNCTIONS, {"openai": fails}),
+        ):
             result = await S._check_single_provider(provider, MagicMock())
         self.assertEqual(result["status"], "fail")
         self.assertTrue(result["error"].endswith("..."))
@@ -229,12 +241,36 @@ class TestPrintResults(unittest.TestCase):
         from arcval.status import _print_results
 
         results = [
-            {"name": "p1", "types": ["llm"], "key_set": True, "missing_vars": [],
-             "status": "ok", "check_type": "llm", "error": None, "latency_ms": 500},
-            {"name": "p2", "types": ["stt"], "key_set": False, "missing_vars": ["K"],
-             "status": "skipped", "check_type": None, "error": None, "latency_ms": None},
-            {"name": "p3", "types": ["tts"], "key_set": True, "missing_vars": [],
-             "status": "fail", "check_type": None, "error": "boom", "latency_ms": 100},
+            {
+                "name": "p1",
+                "types": ["llm"],
+                "key_set": True,
+                "missing_vars": [],
+                "status": "ok",
+                "check_type": "llm",
+                "error": None,
+                "latency_ms": 500,
+            },
+            {
+                "name": "p2",
+                "types": ["stt"],
+                "key_set": False,
+                "missing_vars": ["K"],
+                "status": "skipped",
+                "check_type": None,
+                "error": None,
+                "latency_ms": None,
+            },
+            {
+                "name": "p3",
+                "types": ["tts"],
+                "key_set": True,
+                "missing_vars": [],
+                "status": "fail",
+                "check_type": None,
+                "error": "boom",
+                "latency_ms": 100,
+            },
         ]
         _print_results(results)
 
@@ -244,10 +280,16 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
         from arcval import status as S
 
         async def fake_check(provider, client, emit=None):
-            return {"name": provider["name"], "types": provider["types"],
-                    "key_set": False, "missing_vars": ["X"],
-                    "status": "skipped", "check_type": None,
-                    "error": None, "latency_ms": None}
+            return {
+                "name": provider["name"],
+                "types": provider["types"],
+                "key_set": False,
+                "missing_vars": ["X"],
+                "status": "skipped",
+                "check_type": None,
+                "error": None,
+                "latency_ms": None,
+            }
 
         with patch.object(S, "_check_single_provider", fake_check):
             result = await S.main()
@@ -257,10 +299,16 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
         from arcval import status as S
 
         async def fake_check(provider, client, emit=None):
-            return {"name": provider["name"], "types": provider["types"],
-                    "key_set": True, "missing_vars": [],
-                    "status": "ok", "check_type": "llm",
-                    "error": None, "latency_ms": 200}
+            return {
+                "name": provider["name"],
+                "types": provider["types"],
+                "key_set": True,
+                "missing_vars": [],
+                "status": "ok",
+                "check_type": "llm",
+                "error": None,
+                "latency_ms": 200,
+            }
 
         with patch.object(S, "_check_single_provider", fake_check):
             result = await S.main(quiet=True)
@@ -277,16 +325,21 @@ class TestStreamingStatus(unittest.IsolatedAsyncioTestCase):
             {"name": "openai", "types": ["llm"], "env_vars": ["OPENAI_API_KEY"]},
         ]
 
-        with patch.object(S, "PROVIDERS", providers), \
-             patch.dict(os.environ, {"OPENAI_API_KEY": "k"}), \
-             patch.dict(S._CHECK_FUNCTIONS, {"openai": AsyncMock(return_value="llm")}):
+        with (
+            patch.object(S, "PROVIDERS", providers),
+            patch.dict(os.environ, {"OPENAI_API_KEY": "k"}),
+            patch.dict(S._CHECK_FUNCTIONS, {"openai": AsyncMock(return_value="llm")}),
+        ):
             events = [event async for event in S.iter_status_events()]
 
-        self.assertEqual([event["stage"] for event in events], [
-            "input_sent",
-            "output_received",
-            "working",
-        ])
+        self.assertEqual(
+            [event["stage"] for event in events],
+            [
+                "input_sent",
+                "output_received",
+                "working",
+            ],
+        )
         self.assertEqual(events[-1]["type"], "result")
         self.assertEqual(events[-1]["result"]["status"], "pass")
 
@@ -313,18 +366,22 @@ class TestStreamingStatus(unittest.IsolatedAsyncioTestCase):
                 "latency_ms": 10,
             }
             if emit is not None:
-                await emit({
-                    "type": "result",
-                    "provider": provider["name"],
-                    "types": provider["types"],
-                    "stage": "working",
-                    "message": "Working",
-                    "result": S._status_json_entry(result),
-                })
+                await emit(
+                    {
+                        "type": "result",
+                        "provider": provider["name"],
+                        "types": provider["types"],
+                        "stage": "working",
+                        "message": "Working",
+                        "result": S._status_json_entry(result),
+                    }
+                )
             return result
 
-        with patch.object(S, "PROVIDERS", providers), \
-             patch.object(S, "_check_single_provider", fake_check):
+        with (
+            patch.object(S, "PROVIDERS", providers),
+            patch.object(S, "_check_single_provider", fake_check),
+        ):
             stream = S.iter_status()
             first = await asyncio.wait_for(stream.__anext__(), timeout=1)
             release_slow.set()

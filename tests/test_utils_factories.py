@@ -53,8 +53,16 @@ class TestCreateSTTService(unittest.TestCase):
             patches = self._patch_imports()
             started = [p.start() for p in patches]
             try:
-                for prov in ["deepgram", "sarvam", "elevenlabs", "openai",
-                             "cartesia", "smallest", "groq", "google"]:
+                for prov in [
+                    "deepgram",
+                    "sarvam",
+                    "elevenlabs",
+                    "openai",
+                    "cartesia",
+                    "smallest",
+                    "groq",
+                    "google",
+                ]:
                     create_stt_service(prov, "english")
             finally:
                 for p in patches:
@@ -92,8 +100,16 @@ class TestCreateTTSService(unittest.TestCase):
             for p in patches:
                 p.start()
             try:
-                for prov in ["cartesia", "openai", "groq", "google", "elevenlabs",
-                             "sarvam", "deepgram", "smallest"]:
+                for prov in [
+                    "cartesia",
+                    "openai",
+                    "groq",
+                    "google",
+                    "elevenlabs",
+                    "sarvam",
+                    "deepgram",
+                    "smallest",
+                ]:
                     create_tts_service(prov, "english")
             finally:
                 for p in patches:

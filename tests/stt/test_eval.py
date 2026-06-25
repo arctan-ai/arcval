@@ -117,9 +117,9 @@ class TestSTTValidateExistingResultsCSV(unittest.TestCase):
         from arcval.stt.eval import validate_existing_results_csv
 
         with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
-            pd.DataFrame(
-                [{"id": "x", "gt": "hi", "pred": "hi"}]
-            ).to_csv(f.name, index=False)
+            pd.DataFrame([{"id": "x", "gt": "hi", "pred": "hi"}]).to_csv(
+                f.name, index=False
+            )
             path = f.name
         try:
             ok, err = validate_existing_results_csv(path)
@@ -215,9 +215,10 @@ class TestTranscribeAudioRouter(unittest.IsolatedAsyncioTestCase):
         from arcval.stt import eval as stt_eval
 
         fake = AsyncMock(return_value={"transcript": "  hello  "})
-        with patch.dict(
-            "os.environ", {"DEEPGRAM_API_KEY": "x"}
-        ), patch.object(stt_eval, "transcribe_deepgram", fake):
+        with (
+            patch.dict("os.environ", {"DEEPGRAM_API_KEY": "x"}),
+            patch.object(stt_eval, "transcribe_deepgram", fake),
+        ):
             transcript = await stt_eval.transcribe_audio.__wrapped__(
                 Path("/tmp/x.wav"),
                 "ref",
@@ -259,22 +260,22 @@ class TestSTTScoreAndWriteResults(unittest.IsolatedAsyncioTestCase):
 
         async def fake_judge(refs, preds, evaluators=None, fallback_model=None):
             return {
-                "scores": {
-                    "semantic_match": {"type": "binary", "mean": 1.0}
-                },
+                "scores": {"semantic_match": {"type": "binary", "mean": 1.0}},
                 "score": 1.0,
                 "per_row": [
-                    {"semantic_match": {"match": True, "reasoning": "ok"}}
-                    for _ in refs
+                    {"semantic_match": {"match": True, "reasoning": "ok"}} for _ in refs
                 ],
             }
 
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
-            with patch.object(
-                stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
-            ), patch.object(
-                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            with (
+                patch.object(
+                    stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
+                ),
+                patch.object(
+                    stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+                ),
             ):
                 metrics = await stt_eval._score_and_write_results(
                     ids=["1", "2"],
@@ -331,10 +332,13 @@ class TestSTTScoreAndWriteResults(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
-            with patch.object(
-                stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
-            ), patch.object(
-                stt_eval, "get_intent_entity_score", _fake_intent_entity(0, 0.25)
+            with (
+                patch.object(
+                    stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
+                ),
+                patch.object(
+                    stt_eval, "get_intent_entity_score", _fake_intent_entity(0, 0.25)
+                ),
             ):
                 metrics = await stt_eval._score_and_write_results(
                     ids=["a"],
@@ -383,10 +387,13 @@ class TestSTTScoreAndWriteResults(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
-            with patch.object(
-                stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
-            ), patch.object(
-                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            with (
+                patch.object(
+                    stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
+                ),
+                patch.object(
+                    stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+                ),
             ):
                 await stt_eval._score_and_write_results(
                     ids=["1"],
@@ -404,10 +411,13 @@ class TestSTTScoreAndWriteResults(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
-            with patch.object(
-                stt_eval, "get_llm_judge_score", AsyncMock()
-            ) as mock_judge, patch.object(
-                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            with (
+                patch.object(
+                    stt_eval, "get_llm_judge_score", AsyncMock()
+                ) as mock_judge,
+                patch.object(
+                    stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+                ),
             ):
                 metrics = await stt_eval._score_and_write_results(
                     ids=["1", "2"],
@@ -467,10 +477,13 @@ class TestSTTRunEvalOnly(unittest.IsolatedAsyncioTestCase):
             )
             out = Path(tmp) / "out"
 
-            with patch.object(
-                stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
-            ), patch.object(
-                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            with (
+                patch.object(
+                    stt_eval, "get_llm_judge_score", AsyncMock(side_effect=fake_judge)
+                ),
+                patch.object(
+                    stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+                ),
             ):
                 result = await stt_eval.run_eval_only(
                     dataset_path=str(ds_path),
@@ -497,17 +510,22 @@ class TestSTTRunEvalOnly(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ds_path = Path(tmp) / "ds.json"
             ds_path.write_text(
-                json.dumps([
-                    {"id": "1", "gt": "hello", "pred": "hello"},
-                    {"id": "2", "gt": "world", "pred": "worl"},
-                ])
+                json.dumps(
+                    [
+                        {"id": "1", "gt": "hello", "pred": "hello"},
+                        {"id": "2", "gt": "world", "pred": "worl"},
+                    ]
+                )
             )
             out = Path(tmp) / "out"
 
-            with patch.object(
-                stt_eval, "get_llm_judge_score", AsyncMock()
-            ) as mock_judge, patch.object(
-                stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+            with (
+                patch.object(
+                    stt_eval, "get_llm_judge_score", AsyncMock()
+                ) as mock_judge,
+                patch.object(
+                    stt_eval, "get_intent_entity_score", _fake_intent_entity(1, 1.0)
+                ),
             ):
                 result = await stt_eval.run_eval_only(
                     dataset_path=str(ds_path),
@@ -566,9 +584,7 @@ def _patch_sarvam(stt_eval, ws):
         patch.object(stt_eval, "AsyncSarvamAI", return_value=fake_client),
         patch.object(stt_eval, "load_audio", return_value=b"\x00\x00"),
         patch.object(stt_eval, "get_stt_language_code", return_value="hi-IN"),
-        patch.object(
-            stt_eval.SARVAM_STT_STREAMING_LIMITER, "acquire", AsyncMock()
-        ),
+        patch.object(stt_eval.SARVAM_STT_STREAMING_LIMITER, "acquire", AsyncMock()),
     )
 
 
@@ -616,9 +632,7 @@ class TestTranscribeSarvam(unittest.IsolatedAsyncioTestCase):
     async def test_error_message_raises(self):
         from arcval.stt import eval as stt_eval
 
-        message = SimpleNamespace(
-            type="error", data=SimpleNamespace(error="boom")
-        )
+        message = SimpleNamespace(type="error", data=SimpleNamespace(error="boom"))
         ws = _FakeSarvamWS(messages=[message])
         patches = _patch_sarvam(stt_eval, ws)
         for p in patches:

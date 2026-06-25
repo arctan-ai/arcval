@@ -277,10 +277,14 @@ async def main():
             sys.exit(1)
     else:
         if not providers:
-            print("\033[31mError: --provider is required (omit only with --eval-only)\033[0m")
+            print(
+                "\033[31mError: --provider is required (omit only with --eval-only)\033[0m"
+            )
             sys.exit(1)
         if not args.input_dir:
-            print("\033[31mError: --input-dir is required (omit only with --eval-only)\033[0m")
+            print(
+                "\033[31mError: --input-dir is required (omit only with --eval-only)\033[0m"
+            )
             sys.exit(1)
 
         # Validate all providers
@@ -291,7 +295,9 @@ async def main():
                 sys.exit(1)
 
         # Validate input directory structure
-        is_valid, error_msg = validate_stt_input_dir(args.input_dir, args.input_file_name)
+        is_valid, error_msg = validate_stt_input_dir(
+            args.input_dir, args.input_file_name
+        )
         if not is_valid:
             print(f"\033[31mInput validation error: {error_msg}\033[0m")
             sys.exit(1)
@@ -330,9 +336,9 @@ async def main():
             skip_intent_entity=args.skip_intent_entity,
         )
 
-        print(f"\n\033[92m{'='*60}\033[0m")
+        print(f"\n\033[92m{'=' * 60}\033[0m")
         print(f"\033[92mSummary\033[0m")
-        print(f"\033[92m{'='*60}\033[0m\n")
+        print(f"\033[92m{'=' * 60}\033[0m\n")
 
         if result.get("status") == "error":
             print(f"  \033[31mError - {result.get('error')}\033[0m")
@@ -395,9 +401,9 @@ async def main():
         )
 
         # Print summary
-        print(f"\n\033[92m{'='*60}\033[0m")
+        print(f"\n\033[92m{'=' * 60}\033[0m")
         print(f"\033[92mSummary\033[0m")
-        print(f"\033[92m{'='*60}\033[0m\n")
+        print(f"\033[92m{'=' * 60}\033[0m\n")
 
         has_errors = False
         provider_results = result.get("providers", {})
@@ -429,15 +435,15 @@ async def main():
                     f"Sarvam Entity Score={entity:.4f}",
                 ]
                 if judge_scores:
-                    parts.append(", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items()))
+                    parts.append(
+                        ", ".join(f"{k}={v:.4f}" for k, v in judge_scores.items())
+                    )
                 print(f"  {provider}: " + ", ".join(parts))
 
         if has_errors:
             sys.exit(1)
 
-        print(
-            f"\n\033[92mLeaderboard saved to: {result.get('leaderboard_dir')}\033[0m"
-        )
+        print(f"\n\033[92mLeaderboard saved to: {result.get('leaderboard_dir')}\033[0m")
     finally:
         sys.stdout = original_stdout
         sys.stderr = original_stderr

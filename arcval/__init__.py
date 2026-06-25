@@ -55,7 +55,7 @@ except PackageNotFoundError:
 # the same `arcval.stt` / `from arcval import stt` access pattern.
 import importlib
 
-_SUBMODULES = ("stt", "tts", "llm", "agent")
+_SUBMODULES = ("stt", "tts", "llm", "agent", "arctan_eval")
 
 
 def __getattr__(name):
@@ -70,4 +70,4 @@ def __dir__():
     return sorted(list(globals().keys()) + list(_SUBMODULES))
 
 
-__all__ = ["stt", "tts", "llm", "agent", "__version__"]
+__all__ = ["stt", "tts", "llm", "agent", "arctan_eval", "__version__"]

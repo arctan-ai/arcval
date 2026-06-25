@@ -521,7 +521,7 @@ async def run_tts_eval(
             _log(f"Skipping already processed: {_id}")
             continue
 
-        _log(f"Processing [{i+1}/{len(gt_data)}]: {_id}")
+        _log(f"Processing [{i + 1}/{len(gt_data)}]: {_id}")
 
         audio_path = join(audio_output_dir, f"{_id}.wav")
         try:
@@ -950,9 +950,9 @@ async def main():
     )
 
     # Print summary
-    print(f"\n\033[92m{'='*60}\033[0m")
+    print(f"\n\033[92m{'=' * 60}\033[0m")
     print(f"\033[92mSummary\033[0m")
-    print(f"\033[92m{'='*60}\033[0m\n")
+    print(f"\033[92m{'=' * 60}\033[0m\n")
 
     if result.get("status") == "error":
         print(f"  {provider}: \033[31mError - {result.get('error')}\033[0m")
@@ -966,9 +966,7 @@ async def main():
             if isinstance(v, dict) and "type" in v
         }
         ttfb_data = metrics.get("ttfb", {})
-        ttfb_p50 = (
-            ttfb_data.get("p50", "N/A") if isinstance(ttfb_data, dict) else "N/A"
-        )
+        ttfb_p50 = ttfb_data.get("p50", "N/A") if isinstance(ttfb_data, dict) else "N/A"
         judge_str = ", ".join(f"{k}={v:.2f}" for k, v in judge_scores.items())
         ttfb_str = (
             f"TTFB(p50)={ttfb_p50:.3f}s"

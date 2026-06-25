@@ -46,7 +46,9 @@ TEST_CASES_TOOL_CALL = [
         "history": [{"role": "user", "content": "Get weather in Mumbai"}],
         "evaluation": {
             "type": "tool_call",
-            "tool_calls": [{"tool": "get_weather", "arguments": {"location": "Mumbai"}}],
+            "tool_calls": [
+                {"tool": "get_weather", "arguments": {"location": "Mumbai"}}
+            ],
         },
     }
 ]
@@ -58,6 +60,7 @@ VERIFY_MESSAGE_CONTENT = "Hello, are you there?"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def run_cli(*args, extra_env=None):
     """Run `arcval llm ...` as a subprocess and return CompletedProcess."""
@@ -103,10 +106,7 @@ def _is_verify_request(body: dict) -> bool:
     messages = body.get("messages", [])
     if not messages:
         return False
-    return any(
-        msg.get("content", "") == VERIFY_MESSAGE_CONTENT
-        for msg in messages
-    )
+    return any(msg.get("content", "") == VERIFY_MESSAGE_CONTENT for msg in messages)
 
 
 def _is_test_request(body: dict) -> bool:
@@ -114,20 +114,20 @@ def _is_test_request(body: dict) -> bool:
     messages = body.get("messages", [])
     if not messages:
         return False
-    return any(
-        msg.get("content", "") == "Get weather in Mumbai"
-        for msg in messages
-    )
+    return any(msg.get("content", "") == "Get weather in Mumbai" for msg in messages)
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def agent_server(httpserver: HTTPServer):
     """Fake agent that always returns a valid tool-call response."""
-    httpserver.expect_request("/chat", method="POST").respond_with_json(TOOL_CALL_RESPONSE)
+    httpserver.expect_request("/chat", method="POST").respond_with_json(
+        TOOL_CALL_RESPONSE
+    )
     return httpserver
 
 
@@ -159,13 +159,16 @@ def bad_agent_config(tmp_path, bad_agent_server):
 # TestAgentSingleRun
 # ---------------------------------------------------------------------------
 
+
 class TestAgentSingleRun:
     """Single run — no model flag, results saved directly to output_dir."""
 
     def test_exit_0_on_success(self, agent_config):
         cfg, out = agent_config
         result = run_cli("llm", "-c", cfg, "-o", out)
-        assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+        assert result.returncode == 0, (
+            f"stderr: {result.stderr}\nstdout: {result.stdout}"
+        )
 
     def test_results_json_at_output_root(self, agent_config, tmp_path):
         cfg, out = agent_config
@@ -192,13 +195,16 @@ class TestAgentSingleRun:
             f"Expected 2 requests (1 verify + 1 test), got {len(bodies)}: {bodies}"
         )
         # First should be verify, second should be the test case
-        assert _is_verify_request(bodies[0]), f"First request is not verify: {bodies[0]}"
+        assert _is_verify_request(bodies[0]), (
+            f"First request is not verify: {bodies[0]}"
+        )
         assert _is_test_request(bodies[1]), f"Second request is not test: {bodies[1]}"
 
 
 # ---------------------------------------------------------------------------
 # TestAgentBenchmark
 # ---------------------------------------------------------------------------
+
 
 class TestAgentBenchmark:
     """Benchmark mode — two models, per-model subfolders, leaderboard."""
@@ -227,9 +233,7 @@ class TestAgentBenchmark:
     def test_leaderboard_csv_generated(self, agent_config):
         _, _, out = self._run_benchmark(agent_config)
         csv_path = os.path.join(out, "leaderboard", "llm_leaderboard.csv")
-        assert os.path.exists(csv_path), (
-            f"leaderboard CSV not found at {csv_path}"
-        )
+        assert os.path.exists(csv_path), f"leaderboard CSV not found at {csv_path}"
 
     def test_each_model_verified_separately(self, agent_config, agent_server):
         _, _, _ = self._run_benchmark(agent_config)
@@ -260,9 +264,11 @@ class TestAgentBenchmark:
             f"'Overall Summary' not in stdout.\nstdout: {result.stdout}"
         )
 
+
 # ---------------------------------------------------------------------------
 # TestSkipVerify
 # ---------------------------------------------------------------------------
+
 
 class TestSkipVerify:
     """--skip-verify flag skips verification request."""
@@ -281,6 +287,7 @@ class TestSkipVerify:
 # ---------------------------------------------------------------------------
 # TestVerifyCommand
 # ---------------------------------------------------------------------------
+
 
 class TestVerifyCommand:
     """--verify flag alone (no -c config): verify connection only."""
@@ -308,6 +315,7 @@ class TestVerifyCommand:
 # TestVerifyFailureDuringRun
 # ---------------------------------------------------------------------------
 
+
 class TestVerifyFailureDuringRun:
     """When agent returns bad response, verify fails before tests run."""
 
@@ -330,6 +338,7 @@ class TestVerifyFailureDuringRun:
 # ---------------------------------------------------------------------------
 # TestFormatLeaderboardTable
 # ---------------------------------------------------------------------------
+
 
 class TestFormatLeaderboardTable:
     """Unit tests for ``_format_leaderboard_table`` in cli.py."""
@@ -356,11 +365,13 @@ class TestFormatLeaderboardTable:
 
         lb_dir = tmp_path / "leaderboard"
         lb_dir.mkdir()
-        df = pd.DataFrame({
-            "provider": ["deepgram", "google"],
-            "wer": [4.2, 5.1],
-            "semantic_match": [0.92, 0.88],
-        })
+        df = pd.DataFrame(
+            {
+                "provider": ["deepgram", "google"],
+                "wer": [4.2, 5.1],
+                "semantic_match": [0.92, 0.88],
+            }
+        )
         xlsx_path = lb_dir / "stt_leaderboard.xlsx"
         df.to_excel(xlsx_path, sheet_name="summary", index=False, engine="openpyxl")
 
@@ -379,11 +390,13 @@ class TestFormatLeaderboardTable:
 
         lb_dir = tmp_path / "leaderboard"
         lb_dir.mkdir()
-        df = pd.DataFrame({
-            "model": ["gpt-4.1", "gpt-5.1"],
-            "pass_rate": [85.0, 92.5],
-            "total": [50, 50],
-        })
+        df = pd.DataFrame(
+            {
+                "model": ["gpt-4.1", "gpt-5.1"],
+                "pass_rate": [85.0, 92.5],
+                "total": [50, 50],
+            }
+        )
         csv_path = lb_dir / "llm_leaderboard.csv"
         df.to_csv(csv_path, index=False)
 
@@ -427,7 +440,9 @@ class TestFormatLeaderboardTable:
         # Should only contain "val" header + 12 data rows
         lines = [l for l in result.split("\n") if l.strip() and not l.startswith("```")]
         # First line is header, remaining are data rows
-        assert len(lines) == 13, f"Expected 13 lines (header + 12 rows), got {len(lines)}: {lines}"
+        assert len(lines) == 13, (
+            f"Expected 13 lines (header + 12 rows), got {len(lines)}: {lines}"
+        )
 
     def test_malformed_file_returns_none(self, tmp_path):
         lb_dir = tmp_path / "leaderboard"
@@ -437,3 +452,54 @@ class TestFormatLeaderboardTable:
 
         result = self._fmt(str(tmp_path))
         assert result is None
+
+
+class TestArctanEvalCLI:
+    def test_dispatches_to_arctan_eval_benchmark(self, monkeypatch):
+        import arcval.cli as cli
+
+        called = {}
+
+        def fake_asyncio_run(coro):
+            called["coro"] = coro
+
+        def fake_main():
+            return "ARCTAN_CORO"
+
+        monkeypatch.setattr("asyncio.run", fake_asyncio_run)
+        monkeypatch.setattr("arcval.arctan_eval.benchmark.main", fake_main)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "arcval",
+                "arctan-eval",
+                "-p",
+                "deepgram",
+                "-i",
+                "/tmp/input",
+                "-o",
+                "/tmp/out",
+            ],
+        )
+
+        cli.main()
+
+        assert called["coro"] == "ARCTAN_CORO"
+        assert sys.argv == [
+            "arcval",
+            "-p",
+            "deepgram",
+            "-l",
+            "english",
+            "-i",
+            "/tmp/input",
+            "-o",
+            "/tmp/out",
+            "-f",
+            "stt.csv",
+            "-dc",
+            "5",
+            "--skip-intent-entity",
+        ]

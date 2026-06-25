@@ -18,14 +18,21 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             "metrics": {"passed": True, "reasoning": "ok", "judge_results": {}},
         }
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test", AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "id": "tc1",
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "respond hello"},
-                }],
+                test_cases=[
+                    {
+                        "id": "tc1",
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "respond hello"},
+                    }
+                ],
                 system_prompt="sp",
                 tools=[],
                 output_dir=tmp,
@@ -43,13 +50,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             "metrics": {"passed": True, "judge_results": {}},
         }
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test", AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "respond hello"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "respond hello"},
+                    }
+                ],
                 output_dir=tmp,
                 models=["m1", "m2"],
                 provider="openrouter",
@@ -60,13 +74,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
     async def test_run_multi_model_with_exception(self):
         from arcval.llm import tests
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test", AsyncMock(side_effect=RuntimeError("nope"))):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test",
+                AsyncMock(side_effect=RuntimeError("nope")),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "x"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "x"},
+                    }
+                ],
                 output_dir=tmp,
                 models=["m1"],
             )
@@ -81,13 +102,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
         }
         fake_agent = MagicMock()
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external", AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test_external",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "respond"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "respond"},
+                    }
+                ],
                 output_dir=tmp,
                 agent=fake_agent,
             )
@@ -116,19 +144,19 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             # Pre-seed a prior run where tc1 already completed.
-            prior = [{
-                "test_case_id": "tc1",
-                "output": {"response": "done", "tool_calls": []},
-                "metrics": {"passed": True, "judge_results": {}},
-                "test_case": test_cases[0],
-            }]
+            prior = [
+                {
+                    "test_case_id": "tc1",
+                    "output": {"response": "done", "tool_calls": []},
+                    "metrics": {"passed": True, "judge_results": {}},
+                    "test_case": test_cases[0],
+                }
+            ]
             with open(os.path.join(tmp, "results.json"), "w") as f:
                 json.dump(prior, f)
 
             mock_external = AsyncMock(return_value=fake_test_result)
-            with patch(
-                "arcval.llm.run_tests.run_test_external", mock_external
-            ):
+            with patch("arcval.llm.run_tests.run_test_external", mock_external):
                 result = await tests.run(
                     test_cases=test_cases,
                     output_dir=tmp,
@@ -163,14 +191,10 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, "results.json"), "w") as f:
-                json.dump(
-                    [{"test_case_id": "tc1", "metrics": {"passed": True}}], f
-                )
+                json.dump([{"test_case_id": "tc1", "metrics": {"passed": True}}], f)
 
             mock_external = AsyncMock(return_value=fake_test_result)
-            with patch(
-                "arcval.llm.run_tests.run_test_external", mock_external
-            ):
+            with patch("arcval.llm.run_tests.run_test_external", mock_external):
                 await tests.run(
                     test_cases=test_cases,
                     output_dir=tmp,
@@ -186,20 +210,32 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
 
         fake_agent = MagicMock()
         test_cases = [
-            {"id": "dup", "history": [{"role": "user", "content": "a"}],
-             "evaluation": {"type": "response", "criteria": "x"}},
-            {"id": "dup", "history": [{"role": "user", "content": "b"}],
-             "evaluation": {"type": "response", "criteria": "y"}},
+            {
+                "id": "dup",
+                "history": [{"role": "user", "content": "a"}],
+                "evaluation": {"type": "response", "criteria": "x"},
+            },
+            {
+                "id": "dup",
+                "history": [{"role": "user", "content": "b"}],
+                "evaluation": {"type": "response", "criteria": "y"},
+            },
         ]
-        mock_external = AsyncMock(return_value={
-            "output": {"response": "Hi", "tool_calls": []},
-            "metrics": {"passed": True, "judge_results": {}},
-        })
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external", mock_external):
+        mock_external = AsyncMock(
+            return_value={
+                "output": {"response": "Hi", "tool_calls": []},
+                "metrics": {"passed": True, "judge_results": {}},
+            }
+        )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("arcval.llm.run_tests.run_test_external", mock_external),
+        ):
             with self.assertRaises(ValueError):
                 await tests.run(
-                    test_cases=test_cases, output_dir=tmp, agent=fake_agent,
+                    test_cases=test_cases,
+                    output_dir=tmp,
+                    agent=fake_agent,
                 )
         # Fail-fast: no test cases were dispatched.
         self.assertEqual(mock_external.await_count, 0)
@@ -212,27 +248,36 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
                 "output": {"response": "Hi", "tool_calls": []},
                 "metrics": {"passed": True, "judge_results": {}},
             }
+
         fake_agent = MagicMock()
 
         # No ids on the cases — there's no stable key to resume by, so a re-run
         # of the same dataset must re-evaluate everything (no false skips).
         def make_cases():
             return [
-                {"history": [{"role": "user", "content": "a"}],
-                 "evaluation": {"type": "response", "criteria": "x"}},
-                {"history": [{"role": "user", "content": "b"}],
-                 "evaluation": {"type": "response", "criteria": "y"}},
+                {
+                    "history": [{"role": "user", "content": "a"}],
+                    "evaluation": {"type": "response", "criteria": "x"},
+                },
+                {
+                    "history": [{"role": "user", "content": "b"}],
+                    "evaluation": {"type": "response", "criteria": "y"},
+                },
             ]
 
         with tempfile.TemporaryDirectory() as tmp:
             mock_external = AsyncMock(side_effect=fresh_result)
             with patch("arcval.llm.run_tests.run_test_external", mock_external):
                 await tests.run(
-                    test_cases=make_cases(), output_dir=tmp, agent=fake_agent,
+                    test_cases=make_cases(),
+                    output_dir=tmp,
+                    agent=fake_agent,
                 )
                 mock_external.reset_mock()
                 await tests.run(
-                    test_cases=make_cases(), output_dir=tmp, agent=fake_agent,
+                    test_cases=make_cases(),
+                    output_dir=tmp,
+                    agent=fake_agent,
                 )
 
         # Second run re-ran both cases since they carry no resumable id.
@@ -245,7 +290,11 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             "output": {
                 "response": "Hi",
                 "tool_calls": [],
-                "metrics": {"cost": 0.002768, "latency_ms": 1245.8, "total_tokens": 4387},
+                "metrics": {
+                    "cost": 0.002768,
+                    "latency_ms": 1245.8,
+                    "total_tokens": 4387,
+                },
                 "cost": 0.002768,
                 "total_tokens": 4387,
             },
@@ -254,13 +303,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
         }
         fake_agent = MagicMock()
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external", AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test_external",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "respond"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "respond"},
+                    }
+                ],
                 output_dir=tmp,
                 agent=fake_agent,
             )
@@ -290,13 +346,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
         }
         fake_agent = MagicMock()
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external", AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test_external",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "x"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "x"},
+                    }
+                ],
                 output_dir=tmp,
                 agent=fake_agent,
                 models=["m1", "m2"],
@@ -314,14 +377,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
         }
         fake_agent = MagicMock()
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external",
-                   AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test_external",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "x"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "x"},
+                    }
+                ],
                 output_dir=tmp,
                 agent=fake_agent,
                 models=["m1"],
@@ -345,14 +414,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             return fake_ok
 
         fake_agent = MagicMock()
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external",
-                   AsyncMock(side_effect=flaky_external)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test_external",
+                AsyncMock(side_effect=flaky_external),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "x"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "x"},
+                    }
+                ],
                 output_dir=tmp,
                 agent=fake_agent,
                 models=["good", "bad"],
@@ -379,14 +454,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             }
 
         fake_agent = MagicMock()
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test_external",
-                   AsyncMock(side_effect=gated_external)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test_external",
+                AsyncMock(side_effect=gated_external),
+            ),
+        ):
             result = await tests.run(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "x"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "x"},
+                    }
+                ],
                 output_dir=tmp,
                 agent=fake_agent,
                 models=["a", "b"],
@@ -404,13 +485,20 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             "metrics": {"passed": True, "judge_results": {}},
         }
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_tests.run_test", AsyncMock(return_value=fake_test_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_tests.run_test",
+                AsyncMock(return_value=fake_test_result),
+            ),
+        ):
             result = await tests.run_single(
-                test_cases=[{
-                    "history": [{"role": "user", "content": "hi"}],
-                    "evaluation": {"type": "response", "criteria": "x"},
-                }],
+                test_cases=[
+                    {
+                        "history": [{"role": "user", "content": "hi"}],
+                        "evaluation": {"type": "response", "criteria": "x"},
+                    }
+                ],
                 output_dir=tmp,
                 model="m1",
                 run_name="run1",
@@ -424,7 +512,9 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
             "output": {"response": "Hi", "tool_calls": []},
             "metrics": {"passed": True, "judge_results": {}},
         }
-        with patch("arcval.llm.run_tests.run_test", AsyncMock(return_value=fake_test_result)):
+        with patch(
+            "arcval.llm.run_tests.run_test", AsyncMock(return_value=fake_test_result)
+        ):
             result = await tests.run_test(
                 chat_history=[{"role": "user", "content": "hi"}],
                 evaluation={"type": "tool_call", "tool_calls": []},
@@ -438,7 +528,10 @@ class TestLLMTestsRun(unittest.IsolatedAsyncioTestCase):
         from arcval.llm import tests
 
         fake_inf_result = {"response": "Hi", "tool_calls": [], "captured_errors": []}
-        with patch("arcval.llm.run_tests.run_inference", AsyncMock(return_value=fake_inf_result)):
+        with patch(
+            "arcval.llm.run_tests.run_inference",
+            AsyncMock(return_value=fake_inf_result),
+        ):
             result = await tests.run_inference(
                 chat_history=[{"role": "user", "content": "hi"}],
                 system_prompt="sp",
@@ -463,13 +556,21 @@ class TestLLMSimulationsRun(unittest.IsolatedAsyncioTestCase):
             {"persona_index": 0, "scenario_index": 0, "elapsed": 1.0},
             [{"name": "task_complete", "value": 1.0, "type": "binary"}],
         )
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_simulation.run_single_simulation_task",
-                   AsyncMock(return_value=fake_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_simulation.run_single_simulation_task",
+                AsyncMock(return_value=fake_result),
+            ),
+        ):
             result = await simulations.run(
-                personas=[{"characteristics": "p", "gender": "male", "language": "english"}],
+                personas=[
+                    {"characteristics": "p", "gender": "male", "language": "english"}
+                ],
                 scenarios=[{"description": "s"}],
-                evaluators=[{"name": "task_complete", "system_prompt": "x", "judge_model": "m"}],
+                evaluators=[
+                    {"name": "task_complete", "system_prompt": "x", "judge_model": "m"}
+                ],
                 output_dir=tmp,
                 model="m1",
             )
@@ -483,13 +584,21 @@ class TestLLMSimulationsRun(unittest.IsolatedAsyncioTestCase):
             {"persona_index": 0, "scenario_index": 0, "elapsed": 1.0},
             [{"name": "task_complete", "value": 1.0, "type": "binary"}],
         )
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_simulation.run_single_simulation_task",
-                   AsyncMock(return_value=fake_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_simulation.run_single_simulation_task",
+                AsyncMock(return_value=fake_result),
+            ),
+        ):
             result = await simulations.run(
-                personas=[{"characteristics": "p", "gender": "male", "language": "english"}],
+                personas=[
+                    {"characteristics": "p", "gender": "male", "language": "english"}
+                ],
                 scenarios=[{"description": "s"}],
-                evaluators=[{"name": "task_complete", "system_prompt": "x", "judge_model": "m"}],
+                evaluators=[
+                    {"name": "task_complete", "system_prompt": "x", "judge_model": "m"}
+                ],
                 output_dir=tmp,
                 models=["m1", "m2"],
             )
@@ -500,10 +609,17 @@ class TestLLMSimulationsRun(unittest.IsolatedAsyncioTestCase):
         from arcval.llm import simulations
 
         # Force a require_simulation_evaluators failure at the multi-model level
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.judges.require_simulation_evaluators", side_effect=RuntimeError("fail")):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.judges.require_simulation_evaluators",
+                side_effect=RuntimeError("fail"),
+            ),
+        ):
             result = await simulations.run(
-                personas=[{"characteristics": "p", "gender": "male", "language": "english"}],
+                personas=[
+                    {"characteristics": "p", "gender": "male", "language": "english"}
+                ],
                 scenarios=[{"description": "s"}],
                 evaluators=[{"name": "x", "system_prompt": "x", "judge_model": "m"}],
                 output_dir=tmp,
@@ -516,16 +632,30 @@ class TestLLMSimulationsRun(unittest.IsolatedAsyncioTestCase):
 
         fake_result = (
             {"persona_index": 0, "scenario_index": 0, "elapsed": 1.0},
-            [{"name": "x", "value": 1.0, "type": "binary", "evaluator_id": "ev1",
-              "scale_min": 1, "scale_max": 5}],
+            [
+                {
+                    "name": "x",
+                    "value": 1.0,
+                    "type": "binary",
+                    "evaluator_id": "ev1",
+                    "scale_min": 1,
+                    "scale_max": 5,
+                }
+            ],
         )
         fake_agent = MagicMock()
 
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_simulation.run_single_simulation_task",
-                   AsyncMock(return_value=fake_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_simulation.run_single_simulation_task",
+                AsyncMock(return_value=fake_result),
+            ),
+        ):
             result = await simulations.run(
-                personas=[{"characteristics": "p", "gender": "male", "language": "english"}],
+                personas=[
+                    {"characteristics": "p", "gender": "male", "language": "english"}
+                ],
                 scenarios=[{"description": "s"}],
                 evaluators=[{"name": "x", "system_prompt": "x", "judge_model": "m"}],
                 output_dir=tmp,
@@ -540,11 +670,17 @@ class TestLLMSimulationsRun(unittest.IsolatedAsyncioTestCase):
             {"persona_index": 0, "scenario_index": 0, "elapsed": 1.0},
             [{"name": "x", "value": 1, "type": "binary"}],
         )
-        with tempfile.TemporaryDirectory() as tmp, \
-             patch("arcval.llm.run_simulation.run_single_simulation_task",
-                   AsyncMock(return_value=fake_result)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "arcval.llm.run_simulation.run_single_simulation_task",
+                AsyncMock(return_value=fake_result),
+            ),
+        ):
             result = await simulations.run_single(
-                personas=[{"characteristics": "p", "gender": "male", "language": "english"}],
+                personas=[
+                    {"characteristics": "p", "gender": "male", "language": "english"}
+                ],
                 scenarios=[{"description": "s"}],
                 evaluators=[{"name": "x", "system_prompt": "x", "judge_model": "m"}],
                 output_dir=tmp,
@@ -555,8 +691,10 @@ class TestLLMSimulationsRun(unittest.IsolatedAsyncioTestCase):
     async def test_run_simulation_delegates(self):
         from arcval.llm import simulations
 
-        with patch("arcval.llm.run_simulation.run_simulation",
-                   AsyncMock(return_value={"status": "ok"})) as mocked:
+        with patch(
+            "arcval.llm.run_simulation.run_simulation",
+            AsyncMock(return_value={"status": "ok"}),
+        ) as mocked:
             result = await simulations.run_simulation(
                 bot_system_prompt="bp",
                 tools=[],

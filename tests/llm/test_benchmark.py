@@ -19,8 +19,10 @@ from unittest.mock import patch, AsyncMock, MagicMock
 # Reuse the mock helper from test_agent_connection
 # ---------------------------------------------------------------------------
 
+
 def _make_httpx_response(body: dict, status: int = 200):
     import httpx
+
     mock = MagicMock()
     mock.status_code = status
     mock.json.return_value = body
@@ -45,8 +47,8 @@ def _patch_httpx(response_body: dict, status: int = 200):
 # Tests for TextAgentConnection.call() — model in request body (no provider)
 # ---------------------------------------------------------------------------
 
-class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
 
+class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
     async def test_model_included_in_body(self):
         from arcval.connections import TextAgentConnection
 
@@ -97,8 +99,8 @@ class TestCallTextAgentModelParams(unittest.IsolatedAsyncioTestCase):
 # Tests for run_test_external — model threaded through
 # ---------------------------------------------------------------------------
 
-class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
 
+class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
     async def test_model_passed_to_agent_call(self):
         from arcval.connections import TextAgentConnection
         from arcval.llm.run_tests import run_test_external
@@ -149,8 +151,8 @@ class TestRunTestExternalModelParams(unittest.IsolatedAsyncioTestCase):
 # Tests for TextAgentConnection.verify() — benchmark verify
 # ---------------------------------------------------------------------------
 
-class TestVerifyWithModelParams(unittest.IsolatedAsyncioTestCase):
 
+class TestVerifyWithModelParams(unittest.IsolatedAsyncioTestCase):
     async def test_verify_includes_model(self):
         from arcval.connections import TextAgentConnection
 
@@ -183,7 +185,9 @@ class TestVerifyWithModelParams(unittest.IsolatedAsyncioTestCase):
         from arcval.connections import TextAgentConnection
 
         agent = TextAgentConnection(url="http://fake-agent/chat")
-        ctx, mock_client = _patch_httpx({"response": "I am using gemma", "tool_calls": []})
+        ctx, mock_client = _patch_httpx(
+            {"response": "I am using gemma", "tool_calls": []}
+        )
         with ctx:
             result = await agent.verify(model="gemma-4-26b-a4b-it")
 
@@ -208,8 +212,8 @@ class TestVerifyWithModelParams(unittest.IsolatedAsyncioTestCase):
 # Tests for _run_single_model folder naming
 # ---------------------------------------------------------------------------
 
-class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
 
+class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
     async def _get_folder(self, model: str, agent=True):
         """Run _run_single_model and capture the output dir it creates."""
         import os
@@ -217,7 +221,9 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
         from arcval.connections import TextAgentConnection
         from arcval.llm import _Tests
 
-        fake_agent = TextAgentConnection(url="http://fake-agent/chat") if agent else None
+        fake_agent = (
+            TextAgentConnection(url="http://fake-agent/chat") if agent else None
+        )
         fake_body = {"response": "hello", "tool_calls": []}
         test_cases = [
             {
@@ -242,8 +248,7 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
                     agent=fake_agent,
                 )
             created = [
-                d for d in os.listdir(tmpdir)
-                if os.path.isdir(os.path.join(tmpdir, d))
+                d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))
             ]
             return created[0] if created else None
 
@@ -289,7 +294,9 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
                     output_dir=tmpdir,
                     # no model/models passed — simulates plain agent connection run
                 )
-            subfolders = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))]
+            subfolders = [
+                d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d))
+            ]
             # No subfolders — results go directly into tmpdir
             self.assertEqual(subfolders, [])
             # results.json written directly to output_dir
@@ -299,6 +306,7 @@ class TestFolderNaming(unittest.IsolatedAsyncioTestCase):
 # ---------------------------------------------------------------------------
 # Tests for --debug / --debug_count truncating test cases in benchmark.main
 # ---------------------------------------------------------------------------
+
 
 class TestBenchmarkDebugFlag(unittest.IsolatedAsyncioTestCase):
     async def _run_main(self, argv_extra):
@@ -335,9 +343,13 @@ class TestBenchmarkDebugFlag(unittest.IsolatedAsyncioTestCase):
 
             argv = ["arcval", "-c", cfg_path, "-m", "gpt-4.1", "-o", tmpdir]
             argv.extend(argv_extra)
-            with patch.object(sys, "argv", argv), \
-                 patch("arcval.llm.benchmark.run", side_effect=fake_run), \
-                 patch("arcval.llm.benchmark.print_benchmark_summary", return_value=False):
+            with (
+                patch.object(sys, "argv", argv),
+                patch("arcval.llm.benchmark.run", side_effect=fake_run),
+                patch(
+                    "arcval.llm.benchmark.print_benchmark_summary", return_value=False
+                ),
+            ):
                 await benchmark.main()
         self._captured = captured
         return captured["config"]

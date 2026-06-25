@@ -9,8 +9,13 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 
-def _write_wav(path: Path, num_frames: int = 16000, sample_width: int = 2,
-               num_channels: int = 1, frame_rate: int = 16000):
+def _write_wav(
+    path: Path,
+    num_frames: int = 16000,
+    sample_width: int = 2,
+    num_channels: int = 1,
+    frame_rate: int = 16000,
+):
     with wave.open(str(path), "wb") as wf:
         wf.setsampwidth(sample_width)
         wf.setnchannels(num_channels)
@@ -153,10 +158,14 @@ class TestCombineAudioFiles(unittest.TestCase):
             _write_wav(base / "1_bot.wav", num_frames=10)
             _write_wav(base / "2_user.wav", num_frames=10)
             transcript = base / "transcript.json"
-            transcript.write_text(json.dumps([
-                {"role": "assistant", "content": "Hi"},
-                {"role": "user", "content": "Hello"},
-            ]))
+            transcript.write_text(
+                json.dumps(
+                    [
+                        {"role": "assistant", "content": "Hi"},
+                        {"role": "user", "content": "Hello"},
+                    ]
+                )
+            )
             out = base / "out.wav"
             result = combine_audio_files(tmp, str(out), str(transcript))
             self.assertTrue(result)
@@ -169,10 +178,14 @@ class TestCombineAudioFiles(unittest.TestCase):
             base = Path(tmp)
             _write_wav(base / "1_bot.wav", num_frames=10)
             transcript = base / "transcript.json"
-            transcript.write_text(json.dumps([
-                {"role": "assistant", "content": "Hi"},
-                {"role": "assistant", "tool_calls": [{"x": 1}]},  # no content
-            ]))
+            transcript.write_text(
+                json.dumps(
+                    [
+                        {"role": "assistant", "content": "Hi"},
+                        {"role": "assistant", "tool_calls": [{"x": 1}]},  # no content
+                    ]
+                )
+            )
             out = base / "out.wav"
             result = combine_audio_files(tmp, str(out), str(transcript))
             self.assertTrue(result)
@@ -184,10 +197,14 @@ class TestCombineAudioFiles(unittest.TestCase):
             base = Path(tmp)
             _write_wav(base / "1_bot.wav", num_frames=10)
             transcript = base / "transcript.json"
-            transcript.write_text(json.dumps([
-                {"role": "assistant", "content": "Hi"},
-                {"role": "user", "content": "Hello"},  # no 2_user.wav
-            ]))
+            transcript.write_text(
+                json.dumps(
+                    [
+                        {"role": "assistant", "content": "Hi"},
+                        {"role": "user", "content": "Hello"},  # no 2_user.wav
+                    ]
+                )
+            )
             out = base / "out.wav"
             result = combine_audio_files(tmp, str(out), str(transcript))
             self.assertTrue(result)
@@ -199,9 +216,13 @@ class TestCombineAudioFiles(unittest.TestCase):
             base = Path(tmp)
             _write_wav(base / "random.wav")
             transcript = base / "transcript.json"
-            transcript.write_text(json.dumps([
-                {"role": "system", "content": "..."},  # role not assistant/user
-            ]))
+            transcript.write_text(
+                json.dumps(
+                    [
+                        {"role": "system", "content": "..."},  # role not assistant/user
+                    ]
+                )
+            )
             with self.assertRaises(ValueError):
                 combine_audio_files(tmp, str(base / "out.wav"), str(transcript))
 
@@ -213,10 +234,14 @@ class TestCombineAudioFiles(unittest.TestCase):
             _write_wav(base / "1_bot.wav", frame_rate=16000)
             _write_wav(base / "2_user.wav", frame_rate=22050)
             transcript = base / "transcript.json"
-            transcript.write_text(json.dumps([
-                {"role": "assistant", "content": "Hi"},
-                {"role": "user", "content": "Hello"},
-            ]))
+            transcript.write_text(
+                json.dumps(
+                    [
+                        {"role": "assistant", "content": "Hi"},
+                        {"role": "user", "content": "Hello"},
+                    ]
+                )
+            )
             result = combine_audio_files(tmp, str(base / "out.wav"), str(transcript))
             self.assertTrue(result)
 
@@ -237,14 +262,22 @@ class TestMetricsLogger(unittest.IsolatedAsyncioTestCase):
             "label": "rtvi-ai",
             "type": "metrics",
             "data": {
-                "ttfb": [{"processor": "p1", "value": 0.5}, {"processor": "p2", "value": 0}],
+                "ttfb": [
+                    {"processor": "p1", "value": 0.5},
+                    {"processor": "p2", "value": 0},
+                ],
                 "processing": [{"processor": "p1", "value": 0.3}],
             },
         }
 
         from unittest.mock import AsyncMock as _AsyncMock
-        with patch.object(FrameProcessor, "process_frame", _AsyncMock(return_value=None)), \
-             patch.object(MetricsLogger, "push_frame", _AsyncMock(return_value=None)):
+
+        with (
+            patch.object(
+                FrameProcessor, "process_frame", _AsyncMock(return_value=None)
+            ),
+            patch.object(MetricsLogger, "push_frame", _AsyncMock(return_value=None)),
+        ):
             await logger.process_frame(frame, FrameDirection.DOWNSTREAM)
 
         self.assertEqual(ttfb["p1"], [0.5])
@@ -264,8 +297,13 @@ class TestMetricsLogger(unittest.IsolatedAsyncioTestCase):
         frame.message = {"label": "other"}
 
         from unittest.mock import AsyncMock as _AsyncMock
-        with patch.object(FrameProcessor, "process_frame", _AsyncMock(return_value=None)), \
-             patch.object(MetricsLogger, "push_frame", _AsyncMock(return_value=None)):
+
+        with (
+            patch.object(
+                FrameProcessor, "process_frame", _AsyncMock(return_value=None)
+            ),
+            patch.object(MetricsLogger, "push_frame", _AsyncMock(return_value=None)),
+        ):
             await logger.process_frame(frame, FrameDirection.DOWNSTREAM)
 
         self.assertEqual(len(ttfb), 0)
