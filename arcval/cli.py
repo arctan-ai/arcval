@@ -299,6 +299,20 @@ Examples:
         action="store_true",
         help="Skip LLM judge evaluation and only compute WER/CER metrics",
     )
+    _stt_ie_group = stt_parser.add_mutually_exclusive_group()
+    _stt_ie_group.add_argument(
+        "--skip-intent-entity",
+        action="store_true",
+        dest="skip_intent_entity",
+        default=None,
+        help="Skip the intent/entity preservation judge (default: skip on non-TTY, prompt on TTY)",
+    )
+    _stt_ie_group.add_argument(
+        "--no-skip-intent-entity",
+        action="store_false",
+        dest="skip_intent_entity",
+        help="Run the intent/entity preservation judge even when non-TTY",
+    )
 
     # ── TTS ───────────────────────────────────────────────────────
     # `arcval tts` with no args → interactive UI
@@ -580,6 +594,16 @@ Examples:
 
         # ── Dispatch ────────────────────────────────────────────────
         if args.component == "stt":
+            # Resolve intent/entity flag — prompt on TTY when not set
+            _skip_ie = args.skip_intent_entity
+            if _skip_ie is None:
+                if sys.stdin.isatty():
+                    _resp = input("Skip intent/entity judge? [Y/n]: ").strip().lower()
+                    _skip_ie = _resp not in ("n", "no")
+                else:
+                    _skip_ie = True
+                print()  # spacing after prompt
+
             # eval-only: skip STT inference and run evaluators on a (gt, pred) dataset.
             # benchmark: --provider given → run inference + evaluators.
             # neither: launch interactive UI.
@@ -596,6 +620,10 @@ Examples:
                     argv.extend(["--config", args.config])
                 if args.skip_llm_judge:
                     argv.append("--skip-llm-judge")
+                if _skip_ie:
+                    argv.append("--skip-intent-entity")
+                else:
+                    argv.append("--no-skip-intent-entity")
 
                 sys.argv = argv
                 asyncio.run(stt_benchmark_main())
@@ -621,6 +649,10 @@ Examples:
                     argv.extend(["--config", args.config])
                 if args.skip_llm_judge:
                     argv.append("--skip-llm-judge")
+                if _skip_ie:
+                    argv.append("--skip-intent-entity")
+                else:
+                    argv.append("--no-skip-intent-entity")
 
                 sys.argv = argv
                 asyncio.run(stt_benchmark_main())

@@ -870,6 +870,7 @@ async def run_single_provider_eval(
     overwrite: bool,
     judge_evaluators: list[dict] = None,
     skip_llm_judge: bool = False,
+    skip_intent_entity: bool = False,
 ) -> dict:
     """Run STT evaluation for a single provider.
 
@@ -885,6 +886,7 @@ async def run_single_provider_eval(
         overwrite: Overwrite existing results.
         judge_evaluators: Optional list of evaluator dicts.
         skip_llm_judge: When True, skip LLM judge and only compute WER/CER.
+        skip_intent_entity: When True, skip intent/entity preservation judge.
     """
     provider_output_dir = join(output_dir, provider)
 
@@ -1013,6 +1015,7 @@ async def run_single_provider_eval(
             judge_evaluators=judge_evaluators,
             language=language,
             skip_llm_judge=skip_llm_judge,
+            skip_intent_entity=skip_intent_entity,
         )
 
         return {
@@ -1069,11 +1072,15 @@ async def _score_and_write_results(
     judge_evaluators: list[dict] = None,
     language: str = "english",
     skip_llm_judge: bool = False,
+    skip_intent_entity: bool = False,
 ) -> dict:
     """Run WER/CER + optional LLM-judge evaluators over (gt, pred) pairs.
 
     When ``skip_llm_judge`` is True, only WER, CER, and intent/entity scores
     are computed — the LLM-based judge evaluators are skipped entirely.
+
+    When ``skip_intent_entity`` is True, the intent/entity preservation judge
+    is skipped and scores are zeroed.
 
     Writes ``results.csv`` and ``metrics.json`` under ``output_dir`` and the
     resolved evaluator config under ``evaluator_config_dir``. Returns the
@@ -1085,15 +1092,44 @@ async def _score_and_write_results(
     cer_results = get_cer_score(gt_transcripts, pred_transcripts)
     _log(f"CER: {cer_results['score']}", to_terminal=False)
 
-    # Intent + entity preservation are always computed, independent of the
-    # user-supplied evaluators, and reported alongside WER as top-level floats.
-    intent_entity_results = await get_intent_entity_score(
-        gt_transcripts, pred_transcripts, language=language
-    )
-    _log(
-        f"Sarvam Intent Score: {intent_entity_results['intent']:.4f}  Sarvam Entity Score: {intent_entity_results['entity']:.4f}",
-        to_terminal=False,
-    )
+    # Intent + entity preservation — skipped if flag set, graceful on failure
+    if skip_intent_entity:
+        _log("Intent/entity judge skipped (--skip-intent-entity)", to_terminal=False)
+        _ie_row = {
+            "intent_score": 0,
+            "intent_explanation": "skipped",
+            "entity_score": 0.0,
+            "entity_explanation": "skipped",
+        }
+        intent_entity_results = {
+            "intent": 0.0,
+            "entity": 0.0,
+            "per_row": [dict(_ie_row) for _ in ids],
+        }
+    else:
+        try:
+            intent_entity_results = await get_intent_entity_score(
+                gt_transcripts, pred_transcripts, language=language
+            )
+            _log(
+                f"Sarvam Intent Score: {intent_entity_results['intent']:.4f}  Sarvam Entity Score: {intent_entity_results['entity']:.4f}",
+                to_terminal=False,
+            )
+        except Exception as e:
+            _log(
+                f"\033[33mWarning: Intent/entity judge failed ({e}). Scores zeroed.\033[0m"
+            )
+            _ie_row = {
+                "intent_score": 0,
+                "intent_explanation": f"error: {e}",
+                "entity_score": 0.0,
+                "entity_explanation": f"error: {e}",
+            }
+            intent_entity_results = {
+                "intent": 0.0,
+                "entity": 0.0,
+                "per_row": [dict(_ie_row) for _ in ids],
+            }
 
     metrics_data = {
         "wer": wer_results["score"],
@@ -1183,6 +1219,7 @@ async def run_eval_only(
     judge_evaluators: list[dict] = None,
     language: str = "english",
     skip_llm_judge: bool = False,
+    skip_intent_entity: bool = False,
 ) -> dict:
     """Run evaluators only on a pre-existing dataset of (gt, pred) pairs.
 
@@ -1197,6 +1234,7 @@ async def run_eval_only(
         language: Language of the dataset, used to normalize text before the
             intent/entity judge. Defaults to ``english``.
         skip_llm_judge: When True, skip LLM judge and only compute WER/CER.
+        skip_intent_entity: When True, skip intent/entity preservation judge.
 
     Returns:
         dict with status, metrics, and output_dir.
@@ -1231,6 +1269,7 @@ async def run_eval_only(
             judge_evaluators=judge_evaluators,
             language=language,
             skip_llm_judge=skip_llm_judge,
+            skip_intent_entity=skip_intent_entity,
         )
 
         return {
@@ -1315,8 +1354,25 @@ async def main():
         action="store_true",
         help="Skip LLM judge evaluation and only compute WER/CER metrics",
     )
+    _eval_ie_group = parser.add_mutually_exclusive_group()
+    _eval_ie_group.add_argument(
+        "--skip-intent-entity",
+        action="store_true",
+        dest="skip_intent_entity",
+        default=None,
+        help="Skip the intent/entity preservation judge",
+    )
+    _eval_ie_group.add_argument(
+        "--no-skip-intent-entity",
+        action="store_false",
+        dest="skip_intent_entity",
+        help="Run the intent/entity preservation judge",
+    )
 
     args = parser.parse_args()
+
+    if args.skip_intent_entity is None:
+        setattr(args, "skip_intent_entity", False)
 
     provider = args.provider
 
@@ -1357,6 +1413,7 @@ async def main():
         ignore_retry=args.ignore_retry,
         overwrite=args.overwrite,
         skip_llm_judge=args.skip_llm_judge,
+        skip_intent_entity=args.skip_intent_entity,
     )
 
     # Print summary

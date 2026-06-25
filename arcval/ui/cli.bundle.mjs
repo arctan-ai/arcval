@@ -50316,6 +50316,37 @@ function ConfigSkipJudgeStep({
     /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "Esc to go back" }) })
   ] });
 }
+function ConfigSkipIntentEntityStep({
+  mode: mode2,
+  skipIntentEntity,
+  onComplete,
+  onBack
+}) {
+  const choices = [
+    { label: "Yes", value: "yes" },
+    { label: "No", value: "no" }
+  ];
+  use_input_default((_input, key) => {
+    if (key.escape) {
+      onBack();
+    }
+  });
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(Box_default, { flexDirection: "column", padding: 1, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { bold: true, color: "cyan", children: "Skip intent/entity judge?" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginBottom: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "When enabled, the Sarvam API-based intent/entity preservation judge is skipped. Useful when the Sarvam API key is unavailable. When disabled, intents and entities are evaluated against the ground truth." }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      SelectInput,
+      {
+        items: choices,
+        initialIndex: skipIntentEntity ? 0 : 1,
+        onSelect: (value) => {
+          onComplete(value === "yes");
+        }
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Box_default, { marginTop: 1, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Text, { dimColor: true, children: "Esc to go back" }) })
+  ] });
+}
 function KeySetupStep({
   mode: mode2,
   selectedProviders,
@@ -50461,6 +50492,11 @@ function RunStep({
     }
     if (config.skipLlmJudge) {
       args.push("--skip-llm-judge");
+    }
+    if (config.skipIntentEntity) {
+      args.push("--skip-intent-entity");
+    } else {
+      args.push("--no-skip-intent-entity");
     }
     if (isLastProvider) {
       args.push("--leaderboard");
@@ -51397,7 +51433,8 @@ function EvalApp({
     overwrite: false,
     envVars: {},
     arcval: { cmd: "arcval", args: [] },
-    skipLlmJudge: false
+    skipLlmJudge: false,
+    skipIntentEntity: false
   });
   const [initError, setInitError] = (0, import_react25.useState)("");
   (0, import_react25.useEffect)(() => {
@@ -51480,9 +51517,22 @@ function EvalApp({
           mode: config.mode,
           onComplete: (configFile) => {
             setConfig((c) => ({ ...c, configFile }));
-            setStep(config.mode === "stt" ? "config-skip-judge" : "setup-keys");
+            setStep(config.mode === "stt" ? "config-skip-intent-entity" : "setup-keys");
           },
           onBack: () => setStep("config-output")
+        }
+      );
+    case "config-skip-intent-entity":
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        ConfigSkipIntentEntityStep,
+        {
+          mode: config.mode,
+          skipIntentEntity: config.skipIntentEntity,
+          onComplete: (skip) => {
+            setConfig((c) => ({ ...c, skipIntentEntity: skip }));
+            setStep("config-skip-judge");
+          },
+          onBack: () => setStep("config-file")
         }
       );
     case "config-skip-judge":
@@ -51495,7 +51545,7 @@ function EvalApp({
             setConfig((c) => ({ ...c, skipLlmJudge: skip }));
             setStep("setup-keys");
           },
-          onBack: () => setStep("config-file")
+          onBack: () => setStep("config-skip-intent-entity")
         }
       );
     case "setup-keys":

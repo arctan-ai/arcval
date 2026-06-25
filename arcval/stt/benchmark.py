@@ -77,6 +77,7 @@ async def run(
     max_parallel: int = MAX_PARALLEL_PROVIDERS,
     judge_evaluators: list[dict] = None,
     skip_llm_judge: bool = False,
+    skip_intent_entity: bool = False,
 ) -> dict:
     """
     Run STT evaluation for one or more providers and generate a leaderboard.
@@ -130,6 +131,7 @@ async def run(
                 overwrite=overwrite,
                 judge_evaluators=judge_evaluators,
                 skip_llm_judge=skip_llm_judge,
+                skip_intent_entity=skip_intent_entity,
             )
             return (provider, result)
 
@@ -245,10 +247,27 @@ async def main():
     parser.add_argument(
         "--skip-llm-judge",
         action="store_true",
-        help="Skip LLM judge evaluation and only compute WER/CER/intent-entity metrics",
+        help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
+    _bm_ie_group = parser.add_mutually_exclusive_group()
+    _bm_ie_group.add_argument(
+        "--skip-intent-entity",
+        action="store_true",
+        dest="skip_intent_entity",
+        default=None,
+        help="Skip the intent/entity preservation judge",
+    )
+    _bm_ie_group.add_argument(
+        "--no-skip-intent-entity",
+        action="store_false",
+        dest="skip_intent_entity",
+        help="Run the intent/entity preservation judge",
     )
 
     args = parser.parse_args()
+
+    if args.skip_intent_entity is None:
+        setattr(args, "skip_intent_entity", False)
 
     providers = args.provider
 
@@ -308,6 +327,7 @@ async def main():
             output_dir=args.output_dir,
             judge_evaluators=judge_evaluators,
             skip_llm_judge=args.skip_llm_judge,
+            skip_intent_entity=args.skip_intent_entity,
         )
 
         print(f"\n\033[92m{'='*60}\033[0m")
@@ -371,6 +391,7 @@ async def main():
             overwrite=args.overwrite,
             judge_evaluators=judge_evaluators,
             skip_llm_judge=args.skip_llm_judge,
+            skip_intent_entity=args.skip_intent_entity,
         )
 
         # Print summary
