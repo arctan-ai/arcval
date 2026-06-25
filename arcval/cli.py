@@ -149,6 +149,67 @@ def _run_agent_verify(
         sys.exit(1)
 
 
+def _is_interactive_run(args) -> bool:
+    """True if this is an interactive UI session (no Slack notifications)."""
+    if args.component is None:
+        return True
+    if args.component in ("stt",) and not args.eval_only and args.provider is None:
+        return True
+    if args.component in ("tts",) and args.provider is None:
+        return True
+    if args.component in ("llm",) and args.config is None and not args.verify:
+        return True
+    if args.component in ("simulations",) and (args.type is None or args.config is None) and not args.verify:
+        return True
+    return False
+
+
+def _skip_slack(args) -> bool:
+    """True for quick commands that don't need Slack notifications."""
+    if args.component in ("status", "agent"):
+        return True
+    if getattr(args, "verify", False):
+        return True
+    if getattr(args, "sim_subcmd", None) == "leaderboard":
+        return True
+    return False
+
+
+def _build_cmd_desc(args) -> str:
+    """Build a human-readable command description from parsed args."""
+    parts = [f"arcval {args.component or 'menu'}"]
+    if getattr(args, "provider", None):
+        parts.append(f"-p {' '.join(args.provider)}")
+    if getattr(args, "model", None):
+        models = args.model
+        if isinstance(models, list):
+            parts.append(f"-m {' '.join(models)}")
+        else:
+            parts.append(f"-m {models}")
+    if getattr(args, "config", None):
+        parts.append(f"-c {args.config}")
+    if getattr(args, "type", None):
+        parts.append(f"--type {args.type}")
+    if getattr(args, "eval_only", False):
+        parts.append("--eval-only")
+    if getattr(args, "dataset", None):
+        parts.append(f"--dataset {args.dataset}")
+    return " ".join(parts)
+
+
+def _send_slack(text: str) -> None:
+    """Send a Slack message via webhook. No-op if SLACK_WEBHOOK_URL is not set."""
+    url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not url:
+        return
+    try:
+        from arcval.slack import send_message
+
+        send_message(text, url)
+    except Exception:
+        pass
+
+
 def main():
     """Main CLI entry point that dispatches to component-specific scripts."""
     # Load environment variables from .env file
@@ -501,360 +562,409 @@ Examples:
     # ─────────────────────────────────────────────────────────────
     args = parser.parse_args()
 
-    # No component specified → launch main menu UI
-    if args.component is None:
-        _launch_ink_ui("menu")
+    # ── Slack notification setup ──────────────────────────────
+    slack_enabled = not _is_interactive_run(args) and not _skip_slack(args)
+    desc = _build_cmd_desc(args) if slack_enabled else ""
 
-    # ── Dispatch ────────────────────────────────────────────────
-    if args.component == "stt":
-        # eval-only: skip STT inference and run evaluators on a (gt, pred) dataset.
-        # benchmark: --provider given → run inference + evaluators.
-        # neither: launch interactive UI.
-        if args.eval_only:
-            from arcval.stt.benchmark import main as stt_benchmark_main
+    if slack_enabled:
+        _send_slack(
+            f"⚙️ Arcval Run Started\n"
+            f"• Command: `{desc}`\n"
+            f"• Output: `{os.path.abspath(args.output_dir)}`"
+        )
 
-            if not args.dataset:
-                print("\033[31mError: --dataset is required with --eval-only\033[0m")
-                sys.exit(1)
+    def _dispatch(args):
+        # No component specified → launch main menu UI
+        if args.component is None:
+            _launch_ink_ui("menu")
 
-            argv = ["arcval", "--eval-only", "--dataset", args.dataset]
-            argv.extend(["-o", args.output_dir])
-            if args.config:
-                argv.extend(["--config", args.config])
-            if args.skip_llm_judge:
-                argv.append("--skip-llm-judge")
+        # ── Dispatch ────────────────────────────────────────────────
+        if args.component == "stt":
+            # eval-only: skip STT inference and run evaluators on a (gt, pred) dataset.
+            # benchmark: --provider given → run inference + evaluators.
+            # neither: launch interactive UI.
+            if args.eval_only:
+                from arcval.stt.benchmark import main as stt_benchmark_main
 
-            sys.argv = argv
-            asyncio.run(stt_benchmark_main())
-        elif args.provider is not None:
-            from arcval.stt.benchmark import main as stt_benchmark_main
+                if not args.dataset:
+                    print("\033[31mError: --dataset is required with --eval-only\033[0m")
+                    sys.exit(1)
 
-            providers = args.provider
-            argv = ["arcval", "-p"] + providers
-            argv.extend(["-l", args.language])
-            argv.extend(["-i", args.input_dir])
-            argv.extend(["-o", args.output_dir])
-            argv.extend(["-f", args.input_file_name])
-            if args.debug:
-                argv.append("-d")
-            argv.extend(["-dc", str(args.debug_count)])
-            if args.ignore_retry:
-                argv.append("--ignore_retry")
-            if args.overwrite:
-                argv.append("--overwrite")
-            if args.save_dir:
-                argv.extend(["-s", args.save_dir])
-            if args.config:
-                argv.extend(["--config", args.config])
-            if args.skip_llm_judge:
-                argv.append("--skip-llm-judge")
-
-            sys.argv = argv
-            asyncio.run(stt_benchmark_main())
-        else:
-            _launch_ink_ui("stt")
-
-    elif args.component == "tts":
-        # If provider is given, run evaluation directly; otherwise launch interactive UI
-        if args.provider is not None:
-            from arcval.tts.benchmark import main as tts_benchmark_main
-
-            providers = args.provider
-            argv = ["arcval", "-p"] + providers
-            argv.extend(["-l", args.language])
-            argv.extend(["-i", args.input])
-            argv.extend(["-o", args.output_dir])
-            if args.debug:
-                argv.append("-d")
-            argv.extend(["-dc", str(args.debug_count)])
-            if args.overwrite:
-                argv.append("--overwrite")
-            if args.config:
-                argv.extend(["--config", args.config])
-
-            sys.argv = argv
-            asyncio.run(tts_benchmark_main())
-        else:
-            _launch_ink_ui("tts")
-
-    elif args.component == "llm":
-        if getattr(args, "eval_only", False):
-            if args.config is None:
-                print("Error: --config is required with --eval-only")
-                sys.exit(1)
-            if not getattr(args, "dataset", None):
-                print("Error: --dataset is required with --eval-only")
-                sys.exit(1)
-
-            from arcval.llm.run_tests import main as llm_run_tests_main
-
-            argv = [
-                "arcval",
-                "-c",
-                args.config,
-                "-o",
-                args.output_dir,
-                "--eval-only",
-                "--dataset",
-                args.dataset,
-            ]
-            if getattr(args, "parallel", None) is not None:
-                argv.extend(["-n", str(args.parallel)])
-            if getattr(args, "debug", False):
-                argv.append("-d")
-                argv.extend(["-dc", str(args.debug_count)])
-            sys.argv = argv
-            asyncio.run(llm_run_tests_main())
-        elif getattr(args, "verify", False):
-            if not args.agent_url:
-                print("Error: --agent-url is required with --verify")
-                sys.exit(1)
-            _run_agent_verify(
-                args.agent_url,
-                args.agent_headers,
-                models=args.model,
-            )
-        elif args.config is None:
-            # No config → interactive mode
-            _launch_ink_ui("llm")
-        else:
-            # Direct mode: run tests with provided config
-            import json as _json
-            from arcval.utils import apply_debug_limit
-
-            with open(args.config) as _f:
-                _config = _json.load(_f)
-
-            if getattr(args, "debug", False) and _config.get("test_cases"):
-                _config["test_cases"] = apply_debug_limit(
-                    _config["test_cases"], True, args.debug_count
-                )
-
-            if _config.get("agent_url"):
-                # Agent connection path
-                from arcval.connections import TextAgentConnection
-                from arcval.llm import tests as _tests
-
-                _agent = TextAgentConnection(
-                    url=_config["agent_url"],
-                    headers=_config.get("agent_headers"),
-                )
-                _models = args.model if args.model else []
-
-                # Verify once per model (skip if already verified upstream e.g. interactive UI)
-                if not getattr(args, "skip_verify", False):
-                    _models_to_verify = _models if _models else [None]
-                    for _m in _models_to_verify:
-                        _label = f"model: {_m}" if _m else "connection"
-                        print(f"\nVerifying agent {_label}: {_config['agent_url']}")
-                        _verify_result = asyncio.run(_agent.verify(model=_m))
-                        if not _verify_result["ok"]:
-                            print(f"✗ Verification failed: {_verify_result['error']}")
-                            _print_sample_output(_verify_result)
-                            sys.exit(1)
-                        print(f"✓ Verified")
-                        _print_sample_output(_verify_result)
-                        print()
-
-                from arcval.llm.tests_leaderboard import generate_leaderboard
-                from arcval.llm._output import print_benchmark_summary
-
-                # Run — all models together (tests.run fans them out in parallel)
-                if _models:
-                    print(f"\n\033[92m{'='*60}\033[0m")
-                    print(f"\033[92m  Models: {', '.join(_models)}\033[0m")
-                    print(f"\033[92m{'='*60}\033[0m\n")
-                    _results = asyncio.run(
-                        _tests.run(
-                            agent=_agent,
-                            test_cases=_config["test_cases"],
-                            output_dir=args.output_dir,
-                            models=_models,
-                            evaluators=_config.get("evaluators"),
-                            test_parallel=args.parallel,
-                            overwrite=args.overwrite,
-                        )
-                    )
-                    _model_results = {
-                        _m: _results.get(_m, _results) for _m in _models
-                    }
-
-                    _lb_dir = os.path.join(args.output_dir, "leaderboard")
-                    generate_leaderboard(output_dir=args.output_dir, save_dir=_lb_dir)
-                    _has_errors = print_benchmark_summary(
-                        models=_models,
-                        model_results=_model_results,
-                        leaderboard_dir=_lb_dir,
-                    )
-                    if _has_errors:
-                        sys.exit(1)
-                else:
-                    asyncio.run(
-                        _tests.run(
-                            agent=_agent,
-                            test_cases=_config["test_cases"],
-                            output_dir=args.output_dir,
-                            evaluators=_config.get("evaluators"),
-                            test_parallel=args.parallel,
-                            overwrite=args.overwrite,
-                        )
-                    )
-            else:
-                from arcval.llm.benchmark import main as llm_benchmark_main
-
-                models = args.model if args.model else ["gpt-4.1"]
-
-                argv = ["arcval", "-c", args.config]
+                argv = ["arcval", "--eval-only", "--dataset", args.dataset]
                 argv.extend(["-o", args.output_dir])
-                argv.extend(["-m"] + models)
-                argv.extend(["-p", args.provider])
-                if getattr(args, "parallel", None) is not None:
-                    argv.extend(["-n", str(args.parallel)])
-                if getattr(args, "overwrite", False):
-                    argv.append("--overwrite")
-                if getattr(args, "debug", False):
-                    argv.append("-d")
-                    argv.extend(["-dc", str(args.debug_count)])
+                if args.config:
+                    argv.extend(["--config", args.config])
+                if args.skip_llm_judge:
+                    argv.append("--skip-llm-judge")
 
                 sys.argv = argv
-                asyncio.run(llm_benchmark_main())
+                asyncio.run(stt_benchmark_main())
+            elif args.provider is not None:
+                from arcval.stt.benchmark import main as stt_benchmark_main
 
-    elif args.component == "simulations":
-        if getattr(args, "verify", False):
-            if not args.agent_url:
-                print("Error: --agent-url is required with --verify")
-                sys.exit(1)
-            _model_str = getattr(args, "model", None)
-            _run_agent_verify(
-                args.agent_url,
-                args.agent_headers,
-                models=[_model_str] if _model_str else None,
-            )
-        # Hidden leaderboard subcommand (used by Ink UI)
-        elif getattr(args, "sim_subcmd", None) == "leaderboard":
-            from arcval.llm.simulation_leaderboard import (
-                main as leaderboard_main,
-            )
+                providers = args.provider
+                argv = ["arcval", "-p"] + providers
+                argv.extend(["-l", args.language])
+                argv.extend(["-i", args.input_dir])
+                argv.extend(["-o", args.output_dir])
+                argv.extend(["-f", args.input_file_name])
+                if args.debug:
+                    argv.append("-d")
+                argv.extend(["-dc", str(args.debug_count)])
+                if args.ignore_retry:
+                    argv.append("--ignore_retry")
+                if args.overwrite:
+                    argv.append("--overwrite")
+                if args.save_dir:
+                    argv.extend(["-s", args.save_dir])
+                if args.config:
+                    argv.extend(["--config", args.config])
+                if args.skip_llm_judge:
+                    argv.append("--skip-llm-judge")
 
-            sys.argv = ["arcval"] + _args_to_argv(
-                args,
-                exclude_keys={
-                    "component",
-                    "sim_subcmd",
-                    "type",
-                    "config",
-                    "model",
-                    "provider",
-                    "parallel",
-                    "port",
-                },
-            )
-            leaderboard_main()
-        elif args.type is None or args.config is None:
-            # Missing type or config → interactive mode
-            _launch_ink_ui("simulations")
-        elif args.type == "text":
-            from arcval.llm.run_simulation import main as llm_simulation_main
+                sys.argv = argv
+                asyncio.run(stt_benchmark_main())
+            else:
+                _launch_ink_ui("stt")
 
-            # Eval-only: skip agent verification entirely; the dataset already
-            # contains the transcripts and we only run evaluators on them.
+        elif args.component == "tts":
+            # If provider is given, run evaluation directly; otherwise launch interactive UI
+            if args.provider is not None:
+                from arcval.tts.benchmark import main as tts_benchmark_main
+
+                providers = args.provider
+                argv = ["arcval", "-p"] + providers
+                argv.extend(["-l", args.language])
+                argv.extend(["-i", args.input])
+                argv.extend(["-o", args.output_dir])
+                if args.debug:
+                    argv.append("-d")
+                argv.extend(["-dc", str(args.debug_count)])
+                if args.overwrite:
+                    argv.append("--overwrite")
+                if args.config:
+                    argv.extend(["--config", args.config])
+
+                sys.argv = argv
+                asyncio.run(tts_benchmark_main())
+            else:
+                _launch_ink_ui("tts")
+
+        elif args.component == "llm":
             if getattr(args, "eval_only", False):
+                if args.config is None:
+                    print("Error: --config is required with --eval-only")
+                    sys.exit(1)
                 if not getattr(args, "dataset", None):
                     print("Error: --dataset is required with --eval-only")
                     sys.exit(1)
+
+                from arcval.llm.run_tests import main as llm_run_tests_main
+
+                argv = [
+                    "arcval",
+                    "-c",
+                    args.config,
+                    "-o",
+                    args.output_dir,
+                    "--eval-only",
+                    "--dataset",
+                    args.dataset,
+                ]
+                if getattr(args, "parallel", None) is not None:
+                    argv.extend(["-n", str(args.parallel)])
+                if getattr(args, "debug", False):
+                    argv.append("-d")
+                    argv.extend(["-dc", str(args.debug_count)])
+                sys.argv = argv
+                asyncio.run(llm_run_tests_main())
+            elif getattr(args, "verify", False):
+                if not args.agent_url:
+                    print("Error: --agent-url is required with --verify")
+                    sys.exit(1)
+                _run_agent_verify(
+                    args.agent_url,
+                    args.agent_headers,
+                    models=args.model,
+                )
+            elif args.config is None:
+                # No config → interactive mode
+                _launch_ink_ui("llm")
+            else:
+                # Direct mode: run tests with provided config
+                import json as _json
+                from arcval.utils import apply_debug_limit
+
+                with open(args.config) as _f:
+                    _config = _json.load(_f)
+
+                if getattr(args, "debug", False) and _config.get("test_cases"):
+                    _config["test_cases"] = apply_debug_limit(
+                        _config["test_cases"], True, args.debug_count
+                    )
+
+                if _config.get("agent_url"):
+                    # Agent connection path
+                    from arcval.connections import TextAgentConnection
+                    from arcval.llm import tests as _tests
+
+                    _agent = TextAgentConnection(
+                        url=_config["agent_url"],
+                        headers=_config.get("agent_headers"),
+                    )
+                    _models = args.model if args.model else []
+
+                    # Verify once per model (skip if already verified upstream e.g. interactive UI)
+                    if not getattr(args, "skip_verify", False):
+                        _models_to_verify = _models if _models else [None]
+                        for _m in _models_to_verify:
+                            _label = f"model: {_m}" if _m else "connection"
+                            print(f"\nVerifying agent {_label}: {_config['agent_url']}")
+                            _verify_result = asyncio.run(_agent.verify(model=_m))
+                            if not _verify_result["ok"]:
+                                print(f"✗ Verification failed: {_verify_result['error']}")
+                                _print_sample_output(_verify_result)
+                                sys.exit(1)
+                            print(f"✓ Verified")
+                            _print_sample_output(_verify_result)
+                            print()
+
+                    from arcval.llm.tests_leaderboard import generate_leaderboard
+                    from arcval.llm._output import print_benchmark_summary
+
+                    # Run — all models together (tests.run fans them out in parallel)
+                    if _models:
+                        print(f"\n\033[92m{'='*60}\033[0m")
+                        print(f"\033[92m  Models: {', '.join(_models)}\033[0m")
+                        print(f"\033[92m{'='*60}\033[0m\n")
+                        _results = asyncio.run(
+                            _tests.run(
+                                agent=_agent,
+                                test_cases=_config["test_cases"],
+                                output_dir=args.output_dir,
+                                models=_models,
+                                evaluators=_config.get("evaluators"),
+                                test_parallel=args.parallel,
+                                overwrite=args.overwrite,
+                            )
+                        )
+                        _model_results = {
+                            _m: _results.get(_m, _results) for _m in _models
+                        }
+
+                        _lb_dir = os.path.join(args.output_dir, "leaderboard")
+                        generate_leaderboard(output_dir=args.output_dir, save_dir=_lb_dir)
+                        _has_errors = print_benchmark_summary(
+                            models=_models,
+                            model_results=_model_results,
+                            leaderboard_dir=_lb_dir,
+                        )
+                        if _has_errors:
+                            sys.exit(1)
+                    else:
+                        asyncio.run(
+                            _tests.run(
+                                agent=_agent,
+                                test_cases=_config["test_cases"],
+                                output_dir=args.output_dir,
+                                evaluators=_config.get("evaluators"),
+                                test_parallel=args.parallel,
+                                overwrite=args.overwrite,
+                            )
+                        )
+                else:
+                    from arcval.llm.benchmark import main as llm_benchmark_main
+
+                    models = args.model if args.model else ["gpt-4.1"]
+
+                    argv = ["arcval", "-c", args.config]
+                    argv.extend(["-o", args.output_dir])
+                    argv.extend(["-m"] + models)
+                    argv.extend(["-p", args.provider])
+                    if getattr(args, "parallel", None) is not None:
+                        argv.extend(["-n", str(args.parallel)])
+                    if getattr(args, "overwrite", False):
+                        argv.append("--overwrite")
+                    if getattr(args, "debug", False):
+                        argv.append("-d")
+                        argv.extend(["-dc", str(args.debug_count)])
+
+                    sys.argv = argv
+                    asyncio.run(llm_benchmark_main())
+
+        elif args.component == "simulations":
+            if getattr(args, "verify", False):
+                if not args.agent_url:
+                    print("Error: --agent-url is required with --verify")
+                    sys.exit(1)
+                _model_str = getattr(args, "model", None)
+                _run_agent_verify(
+                    args.agent_url,
+                    args.agent_headers,
+                    models=[_model_str] if _model_str else None,
+                )
+            # Hidden leaderboard subcommand (used by Ink UI)
+            elif getattr(args, "sim_subcmd", None) == "leaderboard":
+                from arcval.llm.simulation_leaderboard import (
+                    main as leaderboard_main,
+                )
+
                 sys.argv = ["arcval"] + _args_to_argv(
                     args,
                     exclude_keys={
                         "component",
                         "sim_subcmd",
                         "type",
-                        "skip_verify",
+                        "config",
+                        "model",
+                        "provider",
+                        "parallel",
+                        "port",
                     },
                 )
-                asyncio.run(llm_simulation_main())
-                return
+                leaderboard_main()
+            elif args.type is None or args.config is None:
+                # Missing type or config → interactive mode
+                _launch_ink_ui("simulations")
+            elif args.type == "text":
+                from arcval.llm.run_simulation import main as llm_simulation_main
 
-            # Pre-verify agent connection if config has agent_url
-            if args.config:
-                import json as _json
-
-                with open(args.config) as _f:
-                    _sim_config = _json.load(_f)
-                if _sim_config.get("agent_url") and not getattr(
-                    args, "skip_verify", False
-                ):
-                    from arcval.connections import TextAgentConnection
-
-                    _sim_agent = TextAgentConnection(
-                        url=_sim_config["agent_url"],
-                        headers=_sim_config.get("agent_headers"),
-                    )
-                    print(f"\nVerifying agent connection: {_sim_config['agent_url']}")
-                    _verify = asyncio.run(_sim_agent.verify())
-                    if not _verify["ok"]:
-                        print(f"✗ Verification failed: {_verify['error']}")
-                        _print_sample_output(_verify)
+                # Eval-only: skip agent verification entirely; the dataset already
+                # contains the transcripts and we only run evaluators on them.
+                if getattr(args, "eval_only", False):
+                    if not getattr(args, "dataset", None):
+                        print("Error: --dataset is required with --eval-only")
                         sys.exit(1)
-                    print("✓ Verified")
-                    _print_sample_output(_verify)
-                    print()
+                    sys.argv = ["arcval"] + _args_to_argv(
+                        args,
+                        exclude_keys={
+                            "component",
+                            "sim_subcmd",
+                            "type",
+                            "skip_verify",
+                        },
+                    )
+                    asyncio.run(llm_simulation_main())
+                    return
 
-            sys.argv = ["arcval"] + _args_to_argv(
-                args, exclude_keys={"component", "sim_subcmd", "type", "skip_verify"}
-            )
-            asyncio.run(llm_simulation_main())
-        elif args.type == "voice":
-            from arcval.agent.run_simulation import main as agent_main
+                # Pre-verify agent connection if config has agent_url
+                if args.config:
+                    import json as _json
 
-            sys.argv = ["arcval"] + _args_to_argv(
-                args,
-                exclude_keys={
-                    "component",
-                    "sim_subcmd",
-                    "type",
-                    "model",
-                    "provider",
-                },
-            )
-            asyncio.run(agent_main())
+                    with open(args.config) as _f:
+                        _sim_config = _json.load(_f)
+                    if _sim_config.get("agent_url") and not getattr(
+                        args, "skip_verify", False
+                    ):
+                        from arcval.connections import TextAgentConnection
 
-    elif args.component == "general":
-        from arcval.general.eval import main as general_eval_main
+                        _sim_agent = TextAgentConnection(
+                            url=_sim_config["agent_url"],
+                            headers=_sim_config.get("agent_headers"),
+                        )
+                        print(f"\nVerifying agent connection: {_sim_config['agent_url']}")
+                        _verify = asyncio.run(_sim_agent.verify())
+                        if not _verify["ok"]:
+                            print(f"✗ Verification failed: {_verify['error']}")
+                            _print_sample_output(_verify)
+                            sys.exit(1)
+                        print("✓ Verified")
+                        _print_sample_output(_verify)
+                        print()
 
-        if not args.dataset:
-            print("\033[31mError: --dataset is required\033[0m")
+                sys.argv = ["arcval"] + _args_to_argv(
+                    args, exclude_keys={"component", "sim_subcmd", "type", "skip_verify"}
+                )
+                asyncio.run(llm_simulation_main())
+            elif args.type == "voice":
+                from arcval.agent.run_simulation import main as agent_main
+
+                sys.argv = ["arcval"] + _args_to_argv(
+                    args,
+                    exclude_keys={
+                        "component",
+                        "sim_subcmd",
+                        "type",
+                        "model",
+                        "provider",
+                    },
+                )
+                asyncio.run(agent_main())
+
+        elif args.component == "general":
+            from arcval.general.eval import main as general_eval_main
+
+            if not args.dataset:
+                print("\033[31mError: --dataset is required\033[0m")
+                sys.exit(1)
+            if not args.config:
+                print("\033[31mError: --config is required\033[0m")
+                sys.exit(1)
+
+            argv = ["arcval", "--dataset", args.dataset, "-c", args.config]
+            argv.extend(["-o", args.output_dir])
+            sys.argv = argv
+            asyncio.run(general_eval_main())
+
+        elif args.component == "status":
+            from arcval.status import run_status_live
+
+            table_mode = getattr(args, "table", False)
+            asyncio.run(run_status_live(table=table_mode))
+
+        elif args.component == "agent":
+            if args.command == "test":
+                test_args = _args_to_argv(args, exclude_keys={"component", "command"})
+                test_args = [
+                    arg.replace("--output-dir", "--output_dir") for arg in test_args
+                ]
+
+                test_module_path = os.path.join(
+                    os.path.dirname(__file__), "agent", "test.py"
+                )
+                sys.argv = ["arcval-test"] + test_args
+                runpy.run_path(test_module_path, run_name="__main__")
+
+        else:
+            parser.print_help()
             sys.exit(1)
-        if not args.config:
-            print("\033[31mError: --config is required\033[0m")
-            sys.exit(1)
 
-        argv = ["arcval", "--dataset", args.dataset, "-c", args.config]
-        argv.extend(["-o", args.output_dir])
-        sys.argv = argv
-        asyncio.run(general_eval_main())
-
-    elif args.component == "status":
-        from arcval.status import run_status_live
-
-        table_mode = getattr(args, "table", False)
-        asyncio.run(run_status_live(table=table_mode))
-
-    elif args.component == "agent":
-        if args.command == "test":
-            test_args = _args_to_argv(args, exclude_keys={"component", "command"})
-            test_args = [
-                arg.replace("--output-dir", "--output_dir") for arg in test_args
-            ]
-
-            test_module_path = os.path.join(
-                os.path.dirname(__file__), "agent", "test.py"
+    try:
+        _dispatch(args)
+    except SystemExit as e:
+        if slack_enabled:
+            emoji = "✅" if e.code == 0 else "❌"
+            status = "Complete" if e.code == 0 else "Failed"
+            _send_slack(
+                f"{emoji} Arcval Run {status}\n"
+                f"• Command: `{desc}`\n"
+                f"• Output: `{os.path.abspath(args.output_dir)}`\n"
+                f"• Status: {'Success' if e.code == 0 else f'Error (exit {e.code})'}"
             )
-            sys.argv = ["arcval-test"] + test_args
-            runpy.run_path(test_module_path, run_name="__main__")
+        raise
+
+    except Exception as e:
+        if slack_enabled:
+            import traceback
+
+            tb = traceback.format_exc()[:1500]
+            _send_slack(
+                f"❌ Arcval Run Failed\n"
+                f"• Command: `{desc}`\n"
+                f"• Output: `{os.path.abspath(args.output_dir)}`\n"
+                f"• Error: `{e}`\n"
+                f"```\n{tb}\n```"
+            )
+        sys.exit(1)
 
     else:
-        parser.print_help()
-        sys.exit(1)
+        if slack_enabled:
+            _send_slack(
+                f"✅ Arcval Run Complete\n"
+                f"• Command: `{desc}`\n"
+                f"• Output: `{os.path.abspath(args.output_dir)}`\n"
+                f"• Status: Success"
+            )
 
 
 if __name__ == "__main__":
