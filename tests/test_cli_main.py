@@ -228,6 +228,62 @@ class TestMainDispatch(unittest.TestCase):
                     ]
                 )
 
+    def test_stt_defaults_skip_both_judges(self):
+        captured = {}
+
+        def _capture():
+            captured["argv"] = list(sys.argv)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "audios").mkdir()
+            import pandas as pd
+            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
+                base / "stt.csv", index=False
+            )
+            (base / "audios" / "a.wav").write_bytes(b"\x00")
+
+            with patch("arcval.stt.benchmark.main", AsyncMock(side_effect=_capture)), \
+                 patch("sys.stdin.isatty", return_value=False):
+                self._run_with_argv([
+                    "arcval", "stt", "-p", "deepgram",
+                    "-i", str(base), "-o", str(base / "out"),
+                ])
+
+        self.assertIn("--skip-llm-judge", captured["argv"])
+        self.assertIn("--skip-intent-entity", captured["argv"])
+        self.assertNotIn("--no-skip-llm-judge", captured["argv"])
+        self.assertNotIn("--no-skip-intent-entity", captured["argv"])
+
+    def test_stt_explicit_no_skip_flags_override_defaults(self):
+        captured = {}
+
+        def _capture():
+            captured["argv"] = list(sys.argv)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "audios").mkdir()
+            import pandas as pd
+            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
+                base / "stt.csv", index=False
+            )
+            (base / "audios" / "a.wav").write_bytes(b"\x00")
+
+            with patch("arcval.stt.benchmark.main", AsyncMock(side_effect=_capture)), \
+                 patch("sys.stdin.isatty", return_value=False):
+                self._run_with_argv([
+                    "arcval", "stt", "-p", "deepgram",
+                    "-i", str(base), "-o", str(base / "out"),
+                    "--no-skip-llm-judge",
+                    "--no-skip-intent-entity",
+                ])
+
+        self.assertIn("--no-skip-llm-judge", captured["argv"])
+        self.assertIn("--no-skip-intent-entity", captured["argv"])
+        self.assertNotIn("--skip-llm-judge", captured["argv"])
+        self.assertNotIn("--skip-intent-entity", captured["argv"])
+
     def test_tts_no_provider_launches_ui(self):
         from arcval import cli
 

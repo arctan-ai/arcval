@@ -214,6 +214,36 @@ def _send_slack(text: str) -> None:
         pass
 
 
+def _find_leaderboard_xlsx(output_dir: str) -> str | None:
+    """Return the first leaderboard workbook path, if present."""
+    from pathlib import Path
+
+    leaderboard_dir = Path(output_dir) / "leaderboard"
+    if not leaderboard_dir.is_dir():
+        return None
+
+    files = sorted(
+        path for path in leaderboard_dir.iterdir() if path.suffix.lower() == ".xlsx"
+    )
+    return str(files[0]) if files else None
+
+
+def _upload_slack_leaderboard(output_dir: str, text: str) -> bool:
+    """Upload the leaderboard workbook to Slack when upload creds are present."""
+    xlsx_path = _find_leaderboard_xlsx(output_dir)
+    if not xlsx_path:
+        return False
+    if not os.environ.get("SLACK_BOT_TOKEN") or not os.environ.get("SLACK_CHANNEL_ID"):
+        return False
+    try:
+        from arcval.slack import upload_file
+
+        upload_file(xlsx_path, initial_comment=text)
+        return True
+    except Exception:
+        return False
+
+
 def _format_leaderboard_table(output_dir: str) -> str | None:
     """Read the leaderboard file and return a Slack mrkdwn table.
 
@@ -337,10 +367,19 @@ Examples:
         default=None,
         help="Path to dataset JSON (list of {id, gt, pred}). Required with --eval-only.",
     )
-    stt_parser.add_argument(
+    _stt_llm_group = stt_parser.add_mutually_exclusive_group()
+    _stt_llm_group.add_argument(
         "--skip-llm-judge",
         action="store_true",
+        dest="skip_llm_judge",
+        default=None,
         help="Skip LLM judge evaluation and only compute WER/CER metrics",
+    )
+    _stt_llm_group.add_argument(
+        "--no-skip-llm-judge",
+        action="store_false",
+        dest="skip_llm_judge",
+        help="Run the LLM judge evaluation",
     )
     _stt_ie_group = stt_parser.add_mutually_exclusive_group()
     _stt_ie_group.add_argument(
@@ -348,7 +387,7 @@ Examples:
         action="store_true",
         dest="skip_intent_entity",
         default=None,
-        help="Skip the intent/entity preservation judge (default: skip on non-TTY, prompt on TTY)",
+        help="Skip the intent/entity preservation judge (default: yes)",
     )
     _stt_ie_group.add_argument(
         "--no-skip-intent-entity",
@@ -694,6 +733,9 @@ Examples:
                 else:
                     _skip_ie = True
                 print()  # spacing after prompt
+            _skip_llm = args.skip_llm_judge
+            if _skip_llm is None:
+                _skip_llm = True
 
             # eval-only: skip STT inference and run evaluators on a (gt, pred) dataset.
             # benchmark: --provider given → run inference + evaluators.
@@ -711,8 +753,10 @@ Examples:
                 argv.extend(["-o", args.output_dir])
                 if args.config:
                     argv.extend(["--config", args.config])
-                if args.skip_llm_judge:
+                if _skip_llm:
                     argv.append("--skip-llm-judge")
+                else:
+                    argv.append("--no-skip-llm-judge")
                 if _skip_ie:
                     argv.append("--skip-intent-entity")
                 else:
@@ -740,8 +784,10 @@ Examples:
                     argv.extend(["-s", args.save_dir])
                 if args.config:
                     argv.extend(["--config", args.config])
-                if args.skip_llm_judge:
+                if _skip_llm:
                     argv.append("--skip-llm-judge")
+                else:
+                    argv.append("--no-skip-llm-judge")
                 if _skip_ie:
                     argv.append("--skip-intent-entity")
                 else:
@@ -1112,11 +1158,10 @@ Examples:
                 f"• Output: `{os.path.abspath(args.output_dir)}`\n"
                 f"• Status: {'Success' if e.code == 0 else f'Error (exit {e.code})'}"
             )
-            if e.code == 0:
-                leaderboard_block = _format_leaderboard_table(args.output_dir)
-                if leaderboard_block:
-                    msg += f"\n\n*Leaderboard:*\n{leaderboard_block}"
-            _send_slack(msg)
+            if e.code == 0 and _upload_slack_leaderboard(args.output_dir, msg):
+                pass
+            else:
+                _send_slack(msg)
         raise
 
     except Exception as e:
@@ -1141,10 +1186,8 @@ Examples:
                 f"• Output: `{os.path.abspath(args.output_dir)}`\n"
                 f"• Status: Success"
             )
-            leaderboard_block = _format_leaderboard_table(args.output_dir)
-            if leaderboard_block:
-                msg += f"\n\n*Leaderboard:*\n{leaderboard_block}"
-            _send_slack(msg)
+            if not _upload_slack_leaderboard(args.output_dir, msg):
+                _send_slack(msg)
 
 
 if __name__ == "__main__":
