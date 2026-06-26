@@ -13,6 +13,19 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 
 class TestLanguageCodes(unittest.TestCase):
+    SONIOX_LANGS = {
+        "english": "en",
+        "bengali": "bn",
+        "gujarati": "gu",
+        "hindi": "hi",
+        "kannada": "kn",
+        "malayalam": "ml",
+        "marathi": "mr",
+        "punjabi": "pa",
+        "tamil": "ta",
+        "telugu": "te",
+    }
+
     def test_get_stt_language_codes_per_provider(self):
         from arcval.utils import get_stt_language_code
 
@@ -31,6 +44,9 @@ class TestLanguageCodes(unittest.TestCase):
         self.assertEqual(get_stt_language_code("haitian creole", "groq"), "ht")
         self.assertEqual(get_stt_language_code("bengali", "openai"), "en")
         self.assertEqual(get_stt_language_code("english", "deepgram"), "en")
+        for language, iso_code in self.SONIOX_LANGS.items():
+            with self.subTest(language=language):
+                self.assertEqual(get_stt_language_code(language, "soniox"), iso_code)
         # Unknown provider falls through to default
         self.assertEqual(get_stt_language_code("english", "unknown"), "en")
 
@@ -67,6 +83,17 @@ class TestLanguageCodes(unittest.TestCase):
         from arcval.utils import validate_stt_language
 
         validate_stt_language("english", "google")
+        for language in self.SONIOX_LANGS:
+            with self.subTest(language=language):
+                validate_stt_language(language, "soniox")
+
+    def test_validate_stt_language_soniox_unsupported(self):
+        from arcval.utils import validate_stt_language
+
+        for language in ("odia", "sindhi", "maithili"):
+            with self.subTest(language=language):
+                with self.assertRaises(ValueError):
+                    validate_stt_language(language, "soniox")
 
     def test_validate_tts_language_unknown_provider(self):
         from arcval.utils import validate_tts_language

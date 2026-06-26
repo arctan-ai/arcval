@@ -66,6 +66,18 @@ class TestParseBotConfig(unittest.TestCase):
         self.assertEqual(cfg.tts.voice_id, "v1")
         self.assertEqual(cfg.llm.provider, "openai")
 
+    def test_soniox_stt_provider(self):
+        from arcval.agent.test import parse_bot_config
+
+        cfg = parse_bot_config(
+            {
+                "system_prompt": "sp",
+                "stt": {"provider": "soniox", "model": "stt-rt-v5"},
+            }
+        )
+        self.assertEqual(cfg.stt.provider, "soniox")
+        self.assertEqual(cfg.stt.model, "stt-rt-v5")
+
     def test_missing_system_prompt_raises(self):
         from arcval.agent.test import parse_bot_config
 

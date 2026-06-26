@@ -46844,6 +46844,23 @@ var STT_PROVIDERS = [
     ])
   },
   {
+    id: "soniox",
+    name: "Soniox",
+    envVar: "SONIOX_API_KEY",
+    languages: /* @__PURE__ */ new Set([
+      "english",
+      "bengali",
+      "gujarati",
+      "hindi",
+      "kannada",
+      "malayalam",
+      "marathi",
+      "punjabi",
+      "tamil",
+      "telugu"
+    ])
+  },
+  {
     id: "google",
     name: "Google Cloud",
     envVar: "GOOGLE_APPLICATION_CREDENTIALS",

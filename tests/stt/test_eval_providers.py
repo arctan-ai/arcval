@@ -1,6 +1,7 @@
 """Happy path tests for STT provider transcribe methods (heavy SDK mocking)."""
 
 import asyncio
+import json
 import os
 import unittest
 from pathlib import Path
@@ -194,6 +195,52 @@ class TestTranscribeSmallest(unittest.IsolatedAsyncioTestCase):
         ):
             result = await E.transcribe_smallest(Path("/tmp/x.wav"), "english")
         self.assertEqual(result["transcript"], "hello")
+
+
+class TestTranscribeSoniox(unittest.IsolatedAsyncioTestCase):
+    async def test_soniox_happy_filters_control_tokens_only(self):
+        from arcval.stt import eval as E
+
+        class FakeWS:
+            def __init__(self):
+                self.sent = []
+                self.messages = [
+                    json.dumps(
+                        {
+                            "tokens": [
+                                {"text": "hello ", "is_final": True},
+                                {"text": "<end>", "is_final": True},
+                                {"text": "world ", "is_final": True},
+                                {"text": "नमस्ते", "is_final": True},
+                            ]
+                        }
+                    ),
+                    json.dumps({"finished": True}),
+                ]
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def send(self, payload):
+                self.sent.append(payload)
+
+            def __aiter__(self):
+                async def gen():
+                    for message in self.messages:
+                        yield message
+
+                return gen()
+
+        with (
+            patch.dict(os.environ, {"SONIOX_API_KEY": "k"}),
+            patch.object(E, "load_audio", side_effect=_mock_load_audio),
+            patch.object(E, "websocket_connect", return_value=FakeWS()),
+        ):
+            result = await E.transcribe_soniox_streaming(Path("/tmp/x.wav"), "english")
+        self.assertEqual(result["transcript"], "hello world नमस्ते")
 
 
 class TestTranscribeGoogle(unittest.IsolatedAsyncioTestCase):

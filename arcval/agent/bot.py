@@ -111,7 +111,14 @@ class MetricsLogger(FrameProcessor):
 
 class STTConfig(BaseModel):
     provider: Literal[
-        "deepgram", "google", "openai", "cartesia", "groq", "elevenlabs", "sarvam"
+        "deepgram",
+        "google",
+        "openai",
+        "cartesia",
+        "groq",
+        "elevenlabs",
+        "sarvam",
+        "soniox",
     ] = "deepgram"
 
 

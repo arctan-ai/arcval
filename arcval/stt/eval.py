@@ -51,6 +51,11 @@ from arcval.langfuse import (
 )
 from arcval.rate_limit import SARVAM_STT_STREAMING_LIMITER
 
+try:
+    from websockets.asyncio.client import connect as websocket_connect
+except ModuleNotFoundError:
+    websocket_connect = None
+
 
 # =============================================================================
 # STT Provider API Methods
@@ -504,13 +509,11 @@ async def transcribe_smallest(audio_path: Path, language: str) -> str:
 
 async def transcribe_smallest_streaming(audio_path: Path, language: str) -> str:
     """Transcribe audio using Smallest's Pulse STT WebSocket API."""
-    try:
-        from websockets.asyncio.client import connect as websocket_connect
-    except ModuleNotFoundError as e:
+    if websocket_connect is None:
         raise ImportError(
             "websockets is required for Smallest streaming STT. "
             "Install with 'pip install websockets'."
-        ) from e
+        )
 
     api_key = os.getenv("SMALLEST_API_KEY")
     if not api_key:
@@ -586,6 +589,91 @@ async def transcribe_smallest_streaming(audio_path: Path, language: str) -> str:
     }
 
 
+def _render_soniox_tokens(tokens: list[dict]) -> str:
+    text = "".join(
+        str(token.get("text", ""))
+        for token in tokens
+        if str(token.get("text", "")) and str(token.get("text", "")) != "<end>"
+    )
+    return " ".join(text.split())
+
+
+async def transcribe_soniox_streaming(audio_path: Path, language: str) -> str:
+    """Transcribe audio using Soniox's real-time STT WebSocket API."""
+    if websocket_connect is None:
+        raise ImportError(
+            "websockets is required for Soniox streaming STT. "
+            "Install with 'pip install websockets'."
+        )
+
+    api_key = os.getenv("SONIOX_API_KEY")
+    if not api_key:
+        raise ValueError("SONIOX_API_KEY environment variable not set")
+
+    lang_code = get_stt_language_code(language, "soniox")
+    endpoint = "wss://stt-rt.soniox.com/transcribe-websocket"
+    config = {
+        "api_key": api_key,
+        "model": "stt-rt-v5",
+        "audio_format": "pcm_s16le",
+        "sample_rate": 16000,
+        "num_channels": 1,
+        "language_hints": [lang_code],
+    }
+    audio = load_audio(audio_path, raw_pcm=True)
+    chunk_size = 4096
+    final_tokens = []
+
+    async with websocket_connect(endpoint) as ws:
+
+        async def send_audio():
+            for start in range(0, len(audio), chunk_size):
+                chunk = audio[start : start + chunk_size]
+                if chunk:
+                    await ws.send(chunk)
+                    await asyncio.sleep(0.05)
+            await ws.send("")
+
+        await ws.send(json.dumps(config))
+        sender = asyncio.create_task(send_audio())
+
+        try:
+            async for message in ws:
+                try:
+                    output = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
+
+                if not isinstance(output, dict):
+                    continue
+
+                if output.get("error_code") is not None:
+                    raise RuntimeError(
+                        "Soniox streaming STT error: "
+                        f"{output.get('error_code')}: {output.get('error_message')}"
+                    )
+
+                for token in output.get("tokens", []):
+                    if token.get("text") and token.get("is_final"):
+                        final_tokens.append(token)
+
+                if output.get("finished"):
+                    break
+        finally:
+            if sender.done():
+                await sender
+            else:
+                sender.cancel()
+                try:
+                    await sender
+                except asyncio.CancelledError:
+                    pass
+
+    return {
+        "transcript": _render_soniox_tokens(final_tokens),
+    }
+
+
 # =============================================================================
 # Main Transcription Router
 # =============================================================================
@@ -611,6 +699,7 @@ async def transcribe_audio(
         "cartesia": transcribe_cartesia,
         # "smallest": transcribe_smallest,
         "smallest": transcribe_smallest_streaming,
+        "soniox": transcribe_soniox_streaming,
     }
 
     if provider not in provider_methods:
@@ -837,6 +926,7 @@ STT_PROVIDERS = [
     "openai",
     "cartesia",
     "smallest",
+    "soniox",
     "groq",
     "google",
     "sarvam",

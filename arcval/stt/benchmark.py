@@ -51,6 +51,7 @@ async def run(
             "openai",
             "cartesia",
             "smallest",
+            "soniox",
             "groq",
             "google",
             "sarvam",

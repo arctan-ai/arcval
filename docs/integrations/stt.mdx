@@ -13,6 +13,7 @@ description: "Supported STT providers in Arcval"
 | **Google**      | chirp-3                | [cloud.google.com](https://cloud.google.com/speech-to-text) |
 | **Sarvam**      | saarika-v2.5           | [sarvam.ai](https://sarvam.ai)                              |
 | **Smallest AI** | pulse                  | [smallest.ai](https://smallest.ai)                          |
+| **Soniox**      | stt-rt-v5              | [soniox.com](https://soniox.com)                            |
 
 Some providers use different models for specific languages:
 
@@ -23,6 +24,15 @@ Some providers use different models for specific languages:
 <Note>
   Google STT uses `chirp-2` model for Sindhi, instead of the default `chirp-3`.
   This is handled automatically by Arcval.
+</Note>
+
+<Note>
+  Soniox STT uses the real-time WebSocket API and requires `SONIOX_API_KEY`.
+  In STT evaluation, Arcval supports Soniox for `english`, `bengali`,
+  `gujarati`, `hindi`, `kannada`, `malayalam`, `marathi`, `punjabi`, `tamil`,
+  and `telugu`. In the current Pipecat agent/service path, Arcval exposes
+  Soniox for the existing agent language subset: `english`, `hindi`, and
+  `kannada`.
 </Note>
 
 ## Next Steps
