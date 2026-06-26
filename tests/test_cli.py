@@ -127,7 +127,9 @@ class TestSlackLeaderboardUpload:
 
         uploaded = {}
 
-        def _fake_upload(file_path, initial_comment, title=None, token=None, channel=None):
+        def _fake_upload(
+            file_path, initial_comment, title=None, token=None, channel=None
+        ):
             uploaded["file_path"] = file_path
             uploaded["initial_comment"] = initial_comment
 
@@ -164,7 +166,9 @@ class TestSlackLeaderboardUpload:
 
         uploaded = {}
 
-        def _fake_upload(file_path, initial_comment, title=None, token=None, channel=None):
+        def _fake_upload(
+            file_path, initial_comment, title=None, token=None, channel=None
+        ):
             uploaded["file_path"] = file_path
 
         monkeypatch.chdir(tmp_path)

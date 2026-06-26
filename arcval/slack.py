@@ -98,7 +98,9 @@ def upload_file(
     token = token or bot_token()
     channel = channel or channel_id()
     if not token or not channel:
-        raise RuntimeError("Slack file upload requires SLACK_BOT_TOKEN and SLACK_CHANNEL_ID")
+        raise RuntimeError(
+            "Slack file upload requires SLACK_BOT_TOKEN and SLACK_CHANNEL_ID"
+        )
 
     filename = os.path.basename(file_path)
     size = os.path.getsize(file_path)
