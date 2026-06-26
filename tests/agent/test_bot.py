@@ -17,6 +17,12 @@ class TestSTTConfig(unittest.TestCase):
         cfg = STTConfig(provider="google")
         self.assertEqual(cfg.provider, "google")
 
+    def test_soniox_provider(self):
+        from arcval.agent.bot import STTConfig
+
+        cfg = STTConfig(provider="soniox")
+        self.assertEqual(cfg.provider, "soniox")
+
 
 class TestTTSConfig(unittest.TestCase):
     def test_default(self):

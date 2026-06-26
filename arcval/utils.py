@@ -9,7 +9,7 @@ import wave
 from collections import defaultdict
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Literal, Optional, Any
+from typing import Any, Literal, Optional
 
 import aiofiles
 import aiohttp
@@ -1108,6 +1108,19 @@ SMALLEST_STT_LANGUAGE_CODES = {
     "ukrainian": "uk",
 }
 
+SONIOX_STT_LANGUAGE_CODES = {
+    "english": "en",
+    "bengali": "bn",
+    "gujarati": "gu",
+    "hindi": "hi",
+    "kannada": "kn",
+    "malayalam": "ml",
+    "marathi": "mr",
+    "punjabi": "pa",
+    "tamil": "ta",
+    "telugu": "te",
+}
+
 # Google STT supported language codes (BCP-47)
 GOOGLE_STT_LANGUAGE_CODES = {
     "afrikaans": "af-ZA",
@@ -1467,6 +1480,8 @@ def get_stt_language_code(language: str, provider: str) -> str:
         return GOOGLE_STT_LANGUAGE_CODES.get(language, "en-US")
     elif provider == "smallest":
         return SMALLEST_STT_LANGUAGE_CODES.get(language, "multi")
+    elif provider == "soniox":
+        return SONIOX_STT_LANGUAGE_CODES.get(language, "en")
     elif provider == "cartesia":
         return CARTESIA_STT_LANGUAGE_CODES.get(language, "en")
     elif provider == "elevenlabs":
@@ -1554,6 +1569,7 @@ def validate_stt_language(language: str, provider: str) -> None:
         "sarvam": SARVAM_STT_LANGUAGE_CODES,
         "google": GOOGLE_STT_LANGUAGE_CODES,
         "smallest": SMALLEST_STT_LANGUAGE_CODES,
+        "soniox": SONIOX_STT_LANGUAGE_CODES,
         "cartesia": CARTESIA_STT_LANGUAGE_CODES,
         "elevenlabs": ELEVENLABS_STT_LANGUAGE_CODES,
         "openai": OPENAI_STT_LANGUAGE_CODES,
@@ -1710,7 +1726,7 @@ def create_stt_service(
     """Create an STT service instance for the given provider and language.
 
     Args:
-        provider: STT provider name (deepgram, openai, cartesia, google, sarvam, elevenlabs, smallest, groq)
+        provider: STT provider name (deepgram, openai, cartesia, google, sarvam, elevenlabs, smallest, soniox, groq)
         language: Language for transcription (english, hindi, kannada)
         model: Optional model name (uses default for provider if not specified)
 
@@ -1721,13 +1737,15 @@ def create_stt_service(
         ValueError: If provider is not supported
     """
     # Import services here to avoid circular imports
+    from pipecat.services.cartesia.stt import CartesiaLiveOptions, CartesiaSTTService
     from pipecat.services.deepgram.stt import DeepgramSTTService, LiveOptions
-    from pipecat.services.openai.stt import OpenAISTTService
-    from pipecat.services.google.stt import GoogleSTTService
-    from pipecat.services.cartesia.stt import CartesiaSTTService, CartesiaLiveOptions
-    from pipecat.services.groq.stt import GroqSTTService
-    from pipecat.services.sarvam.stt import SarvamSTTService
     from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
+    from pipecat.services.google.stt import GoogleSTTService
+    from pipecat.services.groq.stt import GroqSTTService
+    from pipecat.services.openai.stt import OpenAISTTService
+    from pipecat.services.sarvam.stt import SarvamSTTService
+    from pipecat.services.soniox.stt import SonioxInputParams, SonioxSTTService
+
     from arcval.integrations.smallest.stt import SmallestSTTService
 
     stt_language = get_stt_language(language, provider)
@@ -1766,6 +1784,17 @@ def create_stt_service(
             url="wss://waves-api.smallest.ai/api/v1/asr",
             params=SmallestSTTService.SmallestInputParams(
                 audioLanguage=stt_language.value,
+            ),
+        )
+    elif provider == "soniox":
+        return SonioxSTTService(
+            api_key=os.getenv("SONIOX_API_KEY"),
+            sample_rate=16000,
+            params=SonioxInputParams(
+                model=model or "stt-rt-v5",
+                audio_format="pcm_s16le",
+                num_channels=1,
+                language_hints=[stt_language],
             ),
         )
     elif provider == "groq":
@@ -1812,12 +1841,13 @@ def create_tts_service(
     """
     # Import services here to avoid circular imports
     from pipecat.services.cartesia.tts import CartesiaTTSService
-    from pipecat.services.openai.tts import OpenAITTSService
-    from pipecat.services.groq.tts import GroqTTSService
-    from pipecat.services.google.tts import GoogleTTSService
-    from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
-    from pipecat.services.sarvam.tts import SarvamTTSService
     from pipecat.services.deepgram.tts import DeepgramTTSService
+    from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+    from pipecat.services.google.tts import GoogleTTSService
+    from pipecat.services.groq.tts import GroqTTSService
+    from pipecat.services.openai.tts import OpenAITTSService
+    from pipecat.services.sarvam.tts import SarvamTTSService
+
     from arcval.integrations.smallest.tts import SmallestTTSService
 
     tts_language = get_tts_language(language, provider)

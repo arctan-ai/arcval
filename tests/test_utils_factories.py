@@ -19,6 +19,8 @@ class TestCreateSTTService(unittest.TestCase):
             patch("pipecat.services.cartesia.stt.CartesiaLiveOptions"),
             patch("pipecat.services.groq.stt.GroqSTTService"),
             patch("pipecat.services.sarvam.stt.SarvamSTTService"),
+            patch("pipecat.services.soniox.stt.SonioxSTTService"),
+            patch("pipecat.services.soniox.stt.SonioxInputParams"),
             patch("pipecat.services.elevenlabs.stt.ElevenLabsRealtimeSTTService"),
             patch("arcval.integrations.smallest.stt.SmallestSTTService"),
         ]
@@ -47,6 +49,7 @@ class TestCreateSTTService(unittest.TestCase):
             "CARTESIA_API_KEY": "k",
             "ELEVENLABS_API_KEY": "k",
             "SMALLEST_API_KEY": "k",
+            "SONIOX_API_KEY": "k",
             "GOOGLE_APPLICATION_CREDENTIALS": "/creds.json",
         }
         with patch.dict(os.environ, envs):
@@ -60,10 +63,25 @@ class TestCreateSTTService(unittest.TestCase):
                     "openai",
                     "cartesia",
                     "smallest",
+                    "soniox",
                     "groq",
                     "google",
                 ]:
                     create_stt_service(prov, "english")
+            finally:
+                for p in patches:
+                    p.stop()
+
+    def test_soniox_language_subset(self):
+        from arcval.utils import create_stt_service
+
+        envs = {"SONIOX_API_KEY": "k"}
+        with patch.dict(os.environ, envs):
+            patches = self._patch_imports()
+            started = [p.start() for p in patches]
+            try:
+                for language in ["english", "hindi", "kannada"]:
+                    create_stt_service("soniox", language)
             finally:
                 for p in patches:
                     p.stop()

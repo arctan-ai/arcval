@@ -114,6 +114,15 @@ export const STT_PROVIDERS: ProviderInfo[] = [
     ]),
   },
   {
+    id: 'soniox',
+    name: 'Soniox',
+    envVar: 'SONIOX_API_KEY',
+    languages: new Set([
+      'english', 'bengali', 'gujarati', 'hindi', 'kannada',
+      'malayalam', 'marathi', 'punjabi', 'tamil', 'telugu',
+    ]),
+  },
+  {
     id: 'google',
     name: 'Google Cloud',
     envVar: 'GOOGLE_APPLICATION_CREDENTIALS',
