@@ -16,13 +16,14 @@ Usage:
     arcval simulations --type voice -c config.json -o ./out
 """
 
-import sys
 import argparse
 import asyncio
-import runpy
-import os
 import json
+import os
+import runpy
+import sys
 from importlib.metadata import version as get_version
+
 from dotenv import find_dotenv, load_dotenv
 
 
@@ -257,8 +258,9 @@ def _format_leaderboard_table(output_dir: str) -> str | None:
     Returns a triple-backtick code block with the data, or ``None`` if no
     leaderboard file exists.
     """
-    import pandas as pd
     from pathlib import Path
+
+    import pandas as pd
 
     leaderboard_dir = Path(output_dir) / "leaderboard"
     if not leaderboard_dir.is_dir():
@@ -908,6 +910,7 @@ Examples:
             else:
                 # Direct mode: run tests with provided config
                 import json as _json
+
                 from arcval.utils import apply_debug_limit
 
                 with open(args.config) as _f:
@@ -946,8 +949,8 @@ Examples:
                             _print_sample_output(_verify_result)
                             print()
 
-                    from arcval.llm.tests_leaderboard import generate_leaderboard
                     from arcval.llm._output import print_benchmark_summary
+                    from arcval.llm.tests_leaderboard import generate_leaderboard
 
                     # Run — all models together (tests.run fans them out in parallel)
                     if _models:

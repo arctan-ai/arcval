@@ -239,17 +239,28 @@ class TestMainDispatch(unittest.TestCase):
             base = Path(tmp)
             (base / "audios").mkdir()
             import pandas as pd
+
             pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
                 base / "stt.csv", index=False
             )
             (base / "audios" / "a.wav").write_bytes(b"\x00")
 
-            with patch("arcval.stt.benchmark.main", AsyncMock(side_effect=_capture)), \
-                 patch("sys.stdin.isatty", return_value=False):
-                self._run_with_argv([
-                    "arcval", "stt", "-p", "deepgram",
-                    "-i", str(base), "-o", str(base / "out"),
-                ])
+            with (
+                patch("arcval.stt.benchmark.main", AsyncMock(side_effect=_capture)),
+                patch("sys.stdin.isatty", return_value=False),
+            ):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "stt",
+                        "-p",
+                        "deepgram",
+                        "-i",
+                        str(base),
+                        "-o",
+                        str(base / "out"),
+                    ]
+                )
 
         self.assertIn("--skip-llm-judge", captured["argv"])
         self.assertIn("--skip-intent-entity", captured["argv"])
@@ -266,19 +277,30 @@ class TestMainDispatch(unittest.TestCase):
             base = Path(tmp)
             (base / "audios").mkdir()
             import pandas as pd
+
             pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
                 base / "stt.csv", index=False
             )
             (base / "audios" / "a.wav").write_bytes(b"\x00")
 
-            with patch("arcval.stt.benchmark.main", AsyncMock(side_effect=_capture)), \
-                 patch("sys.stdin.isatty", return_value=False):
-                self._run_with_argv([
-                    "arcval", "stt", "-p", "deepgram",
-                    "-i", str(base), "-o", str(base / "out"),
-                    "--no-skip-llm-judge",
-                    "--no-skip-intent-entity",
-                ])
+            with (
+                patch("arcval.stt.benchmark.main", AsyncMock(side_effect=_capture)),
+                patch("sys.stdin.isatty", return_value=False),
+            ):
+                self._run_with_argv(
+                    [
+                        "arcval",
+                        "stt",
+                        "-p",
+                        "deepgram",
+                        "-i",
+                        str(base),
+                        "-o",
+                        str(base / "out"),
+                        "--no-skip-llm-judge",
+                        "--no-skip-intent-entity",
+                    ]
+                )
 
         self.assertIn("--no-skip-llm-judge", captured["argv"])
         self.assertIn("--no-skip-intent-entity", captured["argv"])
@@ -310,17 +332,24 @@ class TestMainDispatch(unittest.TestCase):
 
             stdout = io.StringIO()
             with (
-                patch("arcval.stt.eval.run_single_provider_eval", AsyncMock(return_value=fake_result)),
+                patch(
+                    "arcval.stt.eval.run_single_provider_eval",
+                    AsyncMock(return_value=fake_result),
+                ),
                 patch("sys.stdout", stdout),
-                patch.object(sys, "argv", [
-                    "arcval-stt",
-                    "-p",
-                    "deepgram",
-                    "-i",
-                    str(base),
-                    "-o",
-                    str(base / "out"),
-                ]),
+                patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "arcval-stt",
+                        "-p",
+                        "deepgram",
+                        "-i",
+                        str(base),
+                        "-o",
+                        str(base / "out"),
+                    ],
+                ),
             ):
                 asyncio.run(stt_eval.main())
 
