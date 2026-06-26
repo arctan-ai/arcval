@@ -860,6 +860,11 @@ STT_LANGUAGES = [
 ]
 
 
+def _format_ratio_percent(value: float) -> str:
+    """Format ratio metrics such as WER/CER as percentages for terminal output."""
+    return f"{value * 100:.2f}%"
+
+
 async def run_single_provider_eval(
     provider: str,
     language: str,
@@ -1453,8 +1458,8 @@ async def main():
             if isinstance(v, dict) and "type" in v
         }
         parts = [
-            f"WER={wer:.4f}",
-            f"CER={cer:.4f}",
+            f"WER={_format_ratio_percent(wer)}",
+            f"CER={_format_ratio_percent(cer)}",
             f"Sarvam Intent Score={intent:.4f}",
             f"Sarvam Entity Score={entity:.4f}",
         ]

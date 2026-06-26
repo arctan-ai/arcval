@@ -7,6 +7,22 @@ import pandas as pd
 
 
 class TestArctanEvalBenchmark(unittest.IsolatedAsyncioTestCase):
+    def test_format_metrics_renders_wer_and_cer_as_percentages(self):
+        from arcval.arctan_eval.benchmark import _format_metrics
+
+        formatted = _format_metrics(
+            {
+                "wer": 0.125,
+                "cer": 0.03125,
+                "sarvam_intent_score": 1.0,
+                "sarvam_entity_score": 0.5,
+            }
+        )
+
+        self.assertIn("WER=12.50%", formatted)
+        self.assertIn("CER=3.12%", formatted)
+        self.assertIn("Sarvam Intent Score=1.0000", formatted)
+
     async def test_run_builds_derived_dataset_and_runs_both_conditions(self):
         from arcval.arctan_eval import benchmark
 

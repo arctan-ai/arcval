@@ -1,6 +1,7 @@
 """Tests for arcval/cli.py — entry point and subcommand dispatching."""
 
 import asyncio
+import io
 import json
 import sys
 import tempfile
@@ -283,6 +284,49 @@ class TestMainDispatch(unittest.TestCase):
         self.assertIn("--no-skip-intent-entity", captured["argv"])
         self.assertNotIn("--skip-llm-judge", captured["argv"])
         self.assertNotIn("--skip-intent-entity", captured["argv"])
+
+    def test_stt_summary_renders_wer_and_cer_as_percentages(self):
+        from arcval.stt import eval as stt_eval
+
+        fake_result = {
+            "status": "completed",
+            "metrics": {
+                "wer": 0.125,
+                "cer": 0.03125,
+                "sarvam_intent_score": 1.0,
+                "sarvam_entity_score": 0.5,
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "audios").mkdir()
+            import pandas as pd
+
+            pd.DataFrame({"id": ["a"], "text": ["hi"]}).to_csv(
+                base / "stt.csv", index=False
+            )
+            (base / "audios" / "a.wav").write_bytes(b"\x00")
+
+            stdout = io.StringIO()
+            with (
+                patch("arcval.stt.eval.run_single_provider_eval", AsyncMock(return_value=fake_result)),
+                patch("sys.stdout", stdout),
+                patch.object(sys, "argv", [
+                    "arcval-stt",
+                    "-p",
+                    "deepgram",
+                    "-i",
+                    str(base),
+                    "-o",
+                    str(base / "out"),
+                ]),
+            ):
+                asyncio.run(stt_eval.main())
+
+        output = stdout.getvalue()
+        self.assertIn("WER=12.50%", output)
+        self.assertIn("CER=3.12%", output)
 
     def test_tts_no_provider_launches_ui(self):
         from arcval import cli

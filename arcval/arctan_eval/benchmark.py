@@ -19,6 +19,11 @@ from arcval.stt.eval import (
 from arcval.utils import StreamTee
 
 
+def _format_ratio_percent(value: float) -> str:
+    """Format ratio metrics such as WER/CER as percentages for terminal output."""
+    return f"{value * 100:.2f}%"
+
+
 def _format_metrics(metrics: dict) -> str:
     judge_scores = {
         key: value["mean"]
@@ -26,8 +31,8 @@ def _format_metrics(metrics: dict) -> str:
         if isinstance(value, dict) and "type" in value
     }
     parts = [
-        f"WER={metrics.get('wer', 0):.4f}",
-        f"CER={metrics.get('cer', 0):.4f}",
+        f"WER={_format_ratio_percent(metrics.get('wer', 0))}",
+        f"CER={_format_ratio_percent(metrics.get('cer', 0))}",
         f"Sarvam Intent Score={metrics.get('sarvam_intent_score', 0):.4f}",
         f"Sarvam Entity Score={metrics.get('sarvam_entity_score', 0):.4f}",
     ]
